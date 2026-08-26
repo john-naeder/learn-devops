@@ -1,0 +1,66 @@
+# ─── Terraform ───────────────────────────────────────────────────────────────
+
+# Provider binary tải về, hàng trăm MB.
+.terraform/
+
+# STATE FILE — TUYỆT ĐỐI KHÔNG COMMIT.
+#
+# State chứa MỌI THỨ ở dạng nguyên văn: mật khẩu database, khoá API, endpoint
+# riêng tư. Đẩy nó lên GitHub công khai là rò rỉ toàn bộ hạ tầng.
+# Cần chia sẻ state cho cả đội thì dùng S3 backend — xem lab tuần 10.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# File biến thật, thường chứa email và giá trị riêng của bạn.
+# Chỉ commit file .example.
+*.tfvars
+!*.tfvars.example
+
+# Crash log của Terraform.
+crash.log
+crash.*.log
+
+# Ghi đè cấu hình local, không nên chia sẻ.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# .terraform.lock.hcl thì NÊN commit — nó khoá phiên bản provider để mọi người
+# và mọi máy dùng đúng một bản. Vì vậy không liệt kê ở đây.
+
+# ─── Sản phẩm build ──────────────────────────────────────────────────────────
+
+# Gói .zip do archive_file sinh ra từ mã Lambda. Tái tạo được, không cần commit.
+.build/
+*.zip
+
+# ─── Ansible ─────────────────────────────────────────────────────────────────
+
+*.retry
+.ansible/
+ansible.log
+
+# ─── AWS ─────────────────────────────────────────────────────────────────────
+
+# Đề phòng ai đó lỡ tay copy credential vào repo.
+.aws/
+credentials
+*.pem
+*.ppk
+
+# ─── Hệ thống và trình soạn thảo ─────────────────────────────────────────────
+
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# ─── Kết quả tạm của lab ─────────────────────────────────────────────────────
+
+/tmp/
+*.tmp
+so-do/*.png.tmp

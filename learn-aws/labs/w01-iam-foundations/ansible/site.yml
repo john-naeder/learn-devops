@@ -1,0 +1,248 @@
+---
+# ===========================================================================
+# TUẦN 1 — Ansible ở đây làm VẬN HÀNH, không làm provisioning.
+#
+# Terraform đã dựng user/role/policy. Ansible trả lời câu hỏi khác:
+# "những thứ đó có thực sự chặn đúng cái cần chặn không, và account của tôi
+#  có đang hở chỗ nào không?"
+#
+# Chạy:
+#   ansible-playbook site.yml                  # cả hai phần
+#   ansible-playbook site.yml --tags simulate  # chỉ chạy Policy Simulator
+#   ansible-playbook site.yml --tags audit     # chỉ soi vệ sinh IAM
+# ===========================================================================
+
+- name: "Tuần 1 — kiểm chứng IAM policy và soi vệ sinh account"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+
+    # Access key quá tuổi này thì coi là rủi ro. AWS khuyến nghị xoay vòng 90 ngày.
+    max_key_age_days: 90
+
+  tasks:
+
+    # ------------------------------------------------------------ nạp state
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+      failed_when: tf_raw.rc != 0
+
+    - name: Chuyển output thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    - name: Kiểm tra Terraform đã apply chưa
+      ansible.builtin.assert:
+        that:
+          - tf.reader_user_arn is defined
+          - tf.bucket_arn is defined
+        fail_msg: >-
+          Chưa có output. Chạy `terraform apply` trong {{ tf_dir }} trước.
+        success_msg: "Đã tìm thấy user {{ tf.reader_user_name | default('?') }}"
+
+    # ================================================== PHẦN 1: MÔ PHỎNG QUYỀN
+    # IAM Policy Simulator trả lời "nếu user này gọi action kia lên resource nọ
+    # thì được hay không" mà KHÔNG thực sự gọi. Đây là cách kiểm tra policy an
+    # toàn nhất, và là thứ nên dùng trước mỗi lần sửa policy trong đời thật.
+
+    - name: "Mô phỏng: các action user w01-reader ĐƯỢC phép"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - simulate-principal-policy
+          - --profile={{ aws_profile }}
+          - --policy-source-arn={{ tf.reader_user_arn }}
+          - --action-names={{ item }}
+          - --resource-arns={{ tf.bucket_arn }}/readme.txt
+          - --query=EvaluationResults[0].EvalDecision
+          - --output=text
+      register: sim_allow
+      changed_when: false
+      loop:
+        - s3:GetObject
+      tags: [simulate]
+
+    - name: "Mô phỏng: các action user w01-reader KHÔNG được phép"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - simulate-principal-policy
+          - --profile={{ aws_profile }}
+          - --policy-source-arn={{ tf.reader_user_arn }}
+          - --action-names={{ item }}
+          - --resource-arns={{ tf.bucket_arn }}/readme.txt
+          - --query=EvaluationResults[0].EvalDecision
+          - --output=text
+      register: sim_deny
+      changed_when: false
+      loop:
+        - s3:PutObject
+        - s3:DeleteObject
+        - s3:PutBucketPolicy
+      tags: [simulate]
+
+    - name: Kết quả mô phỏng
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }} → {{ item.stdout | trim }}
+      loop: "{{ sim_allow.results + sim_deny.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      tags: [simulate]
+
+    - name: "Khẳng định: GetObject phải allowed, còn lại phải implicitDeny"
+      ansible.builtin.assert:
+        that:
+          - sim_allow.results | map(attribute='stdout') | map('trim') | select('equalto', 'allowed') | list | length == 1
+          - sim_deny.results  | map(attribute='stdout') | map('trim') | reject('search', 'llow') | list | length == 3
+        fail_msg: >-
+          Policy không hoạt động như thiết kế. Xem lại resource ARN trong
+          data.aws_iam_policy_document.reader — nhớ rằng GetObject cần "/*".
+        success_msg: "Identity policy chặn đúng: chỉ đọc được, không ghi/xóa được."
+      tags: [simulate]
+
+    # ================================================== PHẦN 2: SOI VỆ SINH IAM
+    # Bốn thứ dưới đây là những gì một auditor thật sẽ hỏi bạn đầu tiên.
+
+    - name: Lấy summary của account
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - get-account-summary
+          - "--profile={{ aws_profile }}"
+          - --output=json
+      register: acct_raw
+      changed_when: false
+      tags: [audit]
+
+    - name: Kiểm tra root account đã bật MFA chưa
+      ansible.builtin.debug:
+        msg: >-
+          Root MFA: {{ 'ĐÃ BẬT' if summary.AccountMFAEnabled == 1
+                       else '*** CHƯA BẬT — dừng mọi thứ và đi bật ngay ***' }}
+          | Số user: {{ summary.Users }}
+          | Số role: {{ summary.Roles }}
+          | Số policy tự viết: {{ summary.Policies }}
+      vars:
+        summary: "{{ (acct_raw.stdout | from_json).SummaryMap }}"
+      tags: [audit]
+
+    - name: Liệt kê IAM user và access key của họ
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - list-users
+          - "--profile={{ aws_profile }}"
+          - "--query=Users[].UserName"
+          - --output=json
+      register: users_raw
+      changed_when: false
+      tags: [audit]
+
+    - name: Lấy access key của từng user
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - list-access-keys
+          - "--profile={{ aws_profile }}"
+          - "--user-name={{ item }}"
+          - "--query=AccessKeyMetadata[].[AccessKeyId,Status,CreateDate]"
+          - --output=json
+      register: keys_raw
+      changed_when: false
+      loop: "{{ users_raw.stdout | from_json }}"
+      tags: [audit]
+
+    - name: Access key của từng user
+      ansible.builtin.debug:
+        msg: >-
+          {{ r.item }}:
+          {{ (r.stdout | from_json)
+             | map('join', ' / ') | list | default(['không có key tĩnh'], true) }}
+      loop: "{{ keys_raw.results }}"
+      loop_control:
+        loop_var: r
+        label: "{{ r.item }}"
+      tags: [audit]
+
+    # Access key tĩnh là thứ rò rỉ nhiều nhất trong thực tế (commit nhầm lên
+    # GitHub là kịch bản kinh điển). Đề thi SAA hỏi cách tránh: dùng role.
+    - name: Nhắc về access key tĩnh
+      ansible.builtin.debug:
+        msg: >-
+          Có {{ tong_key }} access key tĩnh trong account. Mỗi cái là một bí mật
+          dài hạn có thể rò rỉ. Nếu > 0, hãy tự hỏi từng cái có thực sự cần không —
+          EC2/Lambda thì dùng role, người thì dùng IAM Identity Center.
+          AWS khuyến nghị xoay vòng sau {{ max_key_age_days }} ngày.
+      vars:
+        tong_key: >-
+          {{ keys_raw.results | map(attribute='stdout') | map('from_json')
+             | map('length') | sum }}
+      tags: [audit]
+
+    - name: Tìm identity được gắn thẳng AdministratorAccess
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - list-entities-for-policy
+          - "--profile={{ aws_profile }}"
+          - --policy-arn=arn:aws:iam::aws:policy/AdministratorAccess
+          - --output=json
+      register: admins_raw
+      changed_when: false
+      failed_when: false
+      tags: [audit]
+
+    - name: Ai đang cầm quyền admin
+      ansible.builtin.debug:
+        msg: >-
+          User admin: {{ ents.PolicyUsers | map(attribute='UserName') | list | default([]) }}
+          | Role admin: {{ ents.PolicyRoles | map(attribute='RoleName') | list | default([]) }}
+          | Group admin: {{ ents.PolicyGroups | map(attribute='GroupName') | list | default([]) }}
+      vars:
+        ents: "{{ admins_raw.stdout | from_json }}"
+      when: admins_raw.rc == 0
+      tags: [audit]
+
+    - name: Đọc kết quả IAM Access Analyzer
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          arn=$(aws accessanalyzer list-analyzers --profile {{ aws_profile }}
+                --region {{ aws_region }} --query 'analyzers[0].arn' --output text);
+          if [ "$arn" = "None" ] || [ -z "$arn" ]; then
+            echo "Chưa bật Access Analyzer";
+          else
+            aws accessanalyzer list-findings --profile {{ aws_profile }}
+              --region {{ aws_region }} --analyzer-arn "$arn"
+              --query 'findings[?status==`ACTIVE`].[resourceType,resource]'
+              --output text || echo "Chưa có finding nào";
+          fi
+        executable: /bin/bash
+      register: analyzer_raw
+      changed_when: false
+      failed_when: false
+      tags: [audit]
+
+    - name: Finding từ Access Analyzer (rỗng là tốt)
+      ansible.builtin.debug:
+        msg: "{{ analyzer_raw.stdout_lines | default(['(không có)']) }}"
+      tags: [audit]

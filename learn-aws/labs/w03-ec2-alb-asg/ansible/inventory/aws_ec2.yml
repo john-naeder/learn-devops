@@ -1,0 +1,33 @@
+# Đây là chỗ dynamic inventory thực sự tỏa sáng.
+#
+# ASG tạo và huỷ máy liên tục — instance ID thay đổi mỗi lần scale hoặc mỗi lần
+# health check loại một máy. Nếu bạn giữ một file inventory tĩnh thì nó sai
+# ngay sau lần scale đầu tiên. Ở đây Ansible hỏi thẳng AWS mỗi lần chạy.
+#
+#   ansible-inventory --graph          xem có máy nào
+#   ansible-inventory --list           xem toàn bộ biến của từng máy
+plugin: amazon.aws.aws_ec2
+
+profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+
+regions:
+  - us-east-1
+
+filters:
+  "tag:Project": learn
+  "tag:Lab": w03-ec2-alb-asg
+  instance-state-name: running
+
+hostnames:
+  - instance-id
+
+compose:
+  ansible_host: instance_id
+
+keyed_groups:
+  # Nhóm theo AZ để có thể nhắm riêng một AZ — hữu ích khi muốn mô phỏng
+  # sự cố mất nguyên một Availability Zone.
+  - key: placement.availability_zone
+    prefix: az
+  - key: tags.Tier
+    prefix: tier

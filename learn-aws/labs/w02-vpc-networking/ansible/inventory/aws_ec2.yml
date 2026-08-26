@@ -1,0 +1,36 @@
+# Dynamic inventory: Ansible hỏi thẳng AWS xem có máy nào, thay vì bạn phải
+# chép IP vào file. Máy bị thay thế bởi Auto Scaling thì inventory tự đúng.
+#
+# Đây là lý do tag Project=learn quan trọng: nó vừa là công cụ dọn dẹp,
+# vừa là cách Ansible tìm ra máy của mình.
+#
+# Xem inventory sinh ra được gì:  ansible-inventory --graph --list
+plugin: amazon.aws.aws_ec2
+
+# Nếu chưa `source ../../env.sh` thì AWS_PROFILE chưa có, mặc định về "learn".
+# Thiếu credential thì plugin im lặng bỏ qua file này và bạn sẽ thấy
+# "inventory rỗng" — chạy `ansible-inventory -vvv --list` để thấy lý do thật.
+profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+
+regions:
+  - us-east-1
+
+filters:
+  "tag:Project": learn
+  "tag:Lab": w02-vpc-networking
+  instance-state-name: running
+
+# Máy không có public IP và cũng không có DNS name dùng được. Với connection
+# plugin aws_ssm, "địa chỉ" của máy chính là instance ID.
+hostnames:
+  - instance-id
+
+compose:
+  ansible_host: instance_id
+
+# Gom nhóm theo tag để về sau nhắm mục tiêu chính xác hơn.
+keyed_groups:
+  - key: tags.Tier
+    prefix: tier
+  - key: placement.availability_zone
+    prefix: az

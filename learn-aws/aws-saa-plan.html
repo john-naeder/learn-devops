@@ -1,0 +1,1279 @@
+<title>SAA-C03 Trong 180 Ngày</title>
+<style>
+  :root {
+    --ground:      #F4F6F3;
+    --surface:     #FFFFFF;
+    --surface-2:   #EDF0EC;
+    --ink:         #131819;
+    --ink-2:       #3B4749;
+    --muted:       #667573;
+    --rule:        #D9DFD8;
+    --rule-strong: #B9C3B9;
+    --accent:      #0F5257;
+    --accent-soft: #DCEAE8;
+    --free:        #2E6B4A;
+    --free-soft:   #DDEBE0;
+    --watch:       #8A5A0C;
+    --watch-soft:  #F3E7CF;
+    --burn:        #9E3423;
+    --burn-soft:   #F4DFD9;
+
+    /* Stack chọn theo mức phủ tiếng Việt: Noto Sans và DejaVu Sans có đủ
+       Latin Extended Additional (ấ ầ ẩ ẫ ậ ự ộ ...), Segoe UI lo phần Windows.
+       Không dùng serif vì Georgia/Times/Liberation Serif dựng dấu chồng bị vỡ. */
+    --display: "Noto Sans", "Segoe UI", "DejaVu Sans", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --sans: "Noto Sans", "Segoe UI", "DejaVu Sans", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --mono: "DejaVu Sans Mono", "Noto Sans Mono", "Cascadia Mono", Consolas, "SF Mono", monospace;
+
+    --fs-xs: 0.72rem;
+    --fs-sm: 0.82rem;
+    --fs-base: 0.945rem;
+    --fs-md: 1.06rem;
+    --fs-lg: 1.32rem;
+    --fs-xl: 1.8rem;
+    --fs-2xl: 2.4rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0E1213;
+      --surface:     #161B1C;
+      --surface-2:   #1D2425;
+      --ink:         #E7ECEA;
+      --ink-2:       #C0CAC8;
+      --muted:       #8C9A98;
+      --rule:        #252D2E;
+      --rule-strong: #384243;
+      --accent:      #63BFB4;
+      --accent-soft: #17302F;
+      --free:        #74C193;
+      --free-soft:   #16291F;
+      --watch:       #DCA84F;
+      --watch-soft:  #2C2416;
+      --burn:        #E28971;
+      --burn-soft:   #2E1C17;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1213;
+    --surface:     #161B1C;
+    --surface-2:   #1D2425;
+    --ink:         #E7ECEA;
+    --ink-2:       #C0CAC8;
+    --muted:       #8C9A98;
+    --rule:        #252D2E;
+    --rule-strong: #384243;
+    --accent:      #63BFB4;
+    --accent-soft: #17302F;
+    --free:        #74C193;
+    --free-soft:   #16291F;
+    --watch:       #DCA84F;
+    --watch-soft:  #2C2416;
+    --burn:        #E28971;
+    --burn-soft:   #2E1C17;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--fs-base);
+    line-height: 1.65;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 6rem;
+    display: grid;
+    grid-template-columns: 218px minmax(0, 1fr);
+    gap: 2.75rem;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+  }
+
+  /* ---------- rail ---------- */
+
+  .rail {
+    position: sticky;
+    top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-size: var(--fs-sm);
+  }
+
+  @media (max-width: 900px) {
+    .rail { position: static; }
+  }
+
+  .rail-brand {
+    font-family: var(--display);
+    font-size: var(--fs-md);
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: -0.018em;
+  }
+
+  .rail-brand span { display: block; font-family: var(--sans); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-top: 0.35rem; }
+
+  .progress-box {
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    border-radius: 3px;
+    padding: 0.7rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  .progress-head b { font-family: var(--mono); font-size: var(--fs-sm); color: var(--accent); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+
+  .progress-track { height: 5px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.35s ease; }
+
+  .rail-nav { display: flex; flex-direction: column; gap: 0.1rem; }
+
+  .rail-nav a {
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: 0.24rem 0.5rem;
+    border-radius: 2px;
+    border-left: 1px solid var(--rule);
+    line-height: 1.4;
+  }
+
+  .rail-nav a:hover { background: var(--surface-2); color: var(--accent); border-left-color: var(--accent); }
+  .rail-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rail-nav .nav-group { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 0.7rem 0.5rem 0.2rem; }
+
+  /* ---------- typography ---------- */
+
+  h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; text-wrap: balance; letter-spacing: -0.018em; margin: 0; }
+
+  h1 { font-size: var(--fs-2xl); line-height: 1.14; letter-spacing: -0.026em; }
+  h2 { font-size: var(--fs-xl); line-height: 1.2; letter-spacing: -0.022em; }
+  h3 { font-size: var(--fs-lg); line-height: 1.26; }
+  h4 { font-size: var(--fs-md); line-height: 1.35; letter-spacing: -0.012em; }
+
+  p { margin: 0; max-width: 68ch; }
+  a { color: var(--accent); }
+
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.87em;
+    background: var(--surface-2);
+    padding: 0.08em 0.34em;
+    border-radius: 2px;
+    border: 1px solid var(--rule);
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  /* ---------- structure ---------- */
+
+  main { display: flex; flex-direction: column; gap: 3.25rem; min-width: 0; }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; scroll-margin-top: 1.5rem; }
+
+  .section-head { display: flex; flex-direction: column; gap: 0.4rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--rule-strong); }
+
+  .lede { font-size: var(--fs-md); color: var(--ink-2); max-width: 62ch; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .status-band {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .stat { padding: 0.85rem 1rem; border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 0.15rem; }
+  .stat:last-child { border-right: 0; }
+  .stat-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .stat-value { font-family: var(--mono); font-size: var(--fs-md); font-variant-numeric: tabular-nums; color: var(--ink); }
+  .stat-value.hot { color: var(--burn); }
+  .stat-note { font-size: var(--fs-xs); color: var(--muted); }
+
+  /* ---------- chips ---------- */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--sans);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 0.13rem 0.5rem;
+    border-radius: 2px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .chip-free  { color: var(--free);  border-color: var(--free);  background: var(--free-soft); }
+  .chip-watch { color: var(--watch); border-color: var(--watch); background: var(--watch-soft); }
+  .chip-burn  { color: var(--burn);  border-color: var(--burn);  background: var(--burn-soft); }
+  .chip-dom   { color: var(--accent); border-color: var(--rule-strong); background: var(--accent-soft); }
+
+  /* ---------- tables ---------- */
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+
+  table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); min-width: 520px; }
+
+  th {
+    text-align: left;
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    font-weight: 600;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--rule-strong);
+    white-space: nowrap;
+  }
+
+  td { padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.svc { font-weight: 600; white-space: nowrap; }
+
+  /* ---------- week cards ---------- */
+
+  .weeks { display: flex; flex-direction: column; gap: 1rem; }
+
+  .week {
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--surface);
+    padding: 1.1rem 1.25rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .week-head { display: flex; gap: 1rem; align-items: flex-start; }
+
+  .week-num {
+    font-family: var(--display);
+    font-size: 2.15rem;
+    font-weight: 700;
+    line-height: 1;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--rule-strong);
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+    padding-top: 0.1rem;
+  }
+
+  .week-title { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+  .week-title h3 { margin: 0; }
+  .week-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+  .block { display: flex; flex-direction: column; gap: 0.4rem; }
+  .block-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted); font-weight: 600; }
+
+  .week p, .block p { max-width: 74ch; }
+
+  ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.3rem; max-width: 72ch; }
+  li { line-height: 1.62; }
+  li::marker { color: var(--muted); }
+
+  .divider { height: 1px; background: var(--rule); }
+
+  /* ---------- checklists ---------- */
+
+  .checklist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+
+  .checklist li { display: block; }
+
+  .checklist label {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    padding: 0.3rem 0.4rem;
+    border-radius: 2px;
+    cursor: pointer;
+    line-height: 1.6;
+  }
+
+  .checklist label:hover { background: var(--surface-2); }
+
+  .checklist input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 0.95rem;
+    height: 0.95rem;
+    margin: 0.24rem 0 0;
+    border: 1px solid var(--rule-strong);
+    border-radius: 2px;
+    background: var(--surface);
+    cursor: pointer;
+    position: relative;
+  }
+
+  .checklist input:checked { background: var(--accent); border-color: var(--accent); }
+
+  .checklist input:checked::after {
+    content: "";
+    position: absolute;
+    left: 0.28rem;
+    top: 0.09rem;
+    width: 0.2rem;
+    height: 0.44rem;
+    border: solid var(--surface);
+    border-width: 0 1.6px 1.6px 0;
+    transform: rotate(42deg);
+  }
+
+  .checklist input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .checklist input:checked + span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--rule-strong); }
+
+  /* ---------- callouts ---------- */
+
+  .callout {
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    background: var(--surface-2);
+  }
+
+  .callout-danger { border-color: var(--burn); background: var(--burn-soft); }
+  .callout-danger .callout-title { color: var(--burn); }
+  .callout-title { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.11em; font-weight: 700; color: var(--ink-2); }
+  .callout p, .callout ul { max-width: 70ch; }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+
+  .panel {
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--surface);
+    padding: 0.95rem 1.05rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .panel h4 { font-size: var(--fs-base); }
+
+  footer.page-foot {
+    border-top: 1px solid var(--rule-strong);
+    padding-top: 1rem;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="shell">
+
+  <aside class="rail">
+    <div class="rail-brand">
+      SAA-C03 trong 180 ngày
+      <span>Lộ trình học AWS</span>
+    </div>
+
+    <div class="progress-box">
+      <div class="progress-head"><span>Tiến độ</span><b id="pct">0%</b></div>
+      <div class="progress-track"><div class="progress-fill" id="bar"></div></div>
+      <div class="stat-note" id="counts">0 / 0 mục</div>
+    </div>
+
+    <nav class="rail-nav">
+      <div class="nav-group">Bối cảnh</div>
+      <a href="#freetier">Free tier của bạn</a>
+      <a href="#traps">Bảng bẫy tiền</a>
+      <a href="#day0">Ngày 0 — khóa ví</a>
+      <div class="nav-group">12 tuần</div>
+      <a href="#weeks">Lộ trình chi tiết</a>
+      <a href="#capstone">Capstone</a>
+      <div class="nav-group">Thi cử</div>
+      <a href="#exam">Chiến lược SAA-C03</a>
+      <a href="#resources">Tài nguyên</a>
+      <a href="#rules">8 quy tắc sống còn</a>
+    </nav>
+  </aside>
+
+  <main>
+
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Kế hoạch học · Fresher / Junior · Tự học</div>
+        <h1>Học AWS từ số 0 đến SAA&#8209;C03 trong 12 tuần, gần như không tốn tiền</h1>
+      </div>
+      <p class="lede">Account của bạn tạo ngày 06/08/2026 nên rơi vào mô hình Free Tier mới của AWS. Cái đó thay đổi mọi thứ: không còn "750 giờ EC2 miễn phí 12 tháng". Bạn có một túi credit và một cái đồng hồ đếm ngược. Lộ trình dưới đây được thiết kế đúng theo hai ràng buộc đó.</p>
+
+      <div class="status-band">
+        <div class="stat">
+          <div class="stat-label">Ngày mở account</div>
+          <div class="stat-value">06/08/2026</div>
+          <div class="stat-note">Sau mốc 15/07/2025</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Free plan kết thúc</div>
+          <div class="stat-value hot">06/02/2027</div>
+          <div class="stat-note" id="daysleft">— còn … ngày</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Ngân sách</div>
+          <div class="stat-value">$100–200</div>
+          <div class="stat-note">Credit, không phải giờ miễn phí</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Chi tiêu mục tiêu</div>
+          <div class="stat-value">&lt; $15</div>
+          <div class="stat-note">Cho toàn bộ 12 tuần lab</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ================= FREE TIER ================= -->
+    <section id="freetier">
+      <div class="section-head">
+        <div class="eyebrow">Bối cảnh · Kết quả research</div>
+        <h2>Free tier của bạn thực sự có gì</h2>
+      </div>
+
+      <p>Ngày 15/07/2025 AWS thay toàn bộ cơ chế Free Tier. Mọi bài blog hay khoá học nói "bạn được 750 giờ t2.micro mỗi tháng trong 12 tháng" đều viết cho account mở <em>trước</em> mốc đó. Account của bạn thì không.</p>
+
+      <div class="cols">
+        <div class="panel">
+          <h4>Bạn nhận được gì</h4>
+          <ul>
+            <li><b>$100 credit</b> ngay khi mở account.</li>
+            <li><b>+$100</b> nữa nếu hoàn thành 5 nhiệm vụ onboarding, mỗi nhiệm vụ $20.</li>
+            <li>Quyền dùng <b>hơn 30 dịch vụ "always free"</b> — cái này vĩnh viễn, không hết hạn.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Bạn mất gì so với ngày xưa</h4>
+          <ul>
+            <li>Không còn gói 12 tháng miễn phí cho EC2, RDS, S3.</li>
+            <li>Mọi giờ EC2, mọi GB S3 giờ <b>trừ thẳng vào credit</b>.</li>
+            <li>Free plan không dùng được Savings Plans, Reserved Instances, một phần Marketplace.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout callout-danger">
+        <div class="callout-title">Điều quan trọng nhất trong cả trang này</div>
+        <p>Nếu bạn chọn <b>Free account plan</b> lúc đăng ký: hết 6 tháng hoặc hết credit — cái nào tới trước — <b>AWS tự động đóng account của bạn</b> và bạn mất quyền truy cập vào toàn bộ tài nguyên lẫn dữ liệu. AWS giữ nội dung 90 ngày để bạn kịp nâng cấp lên Paid plan, sau đó xóa vĩnh viễn.</p>
+        <p>Hệ quả thực tế: <b>đừng để dự án nào bạn quan tâm sống duy nhất trên account này</b>. Code đẩy lên GitHub, hạ tầng viết bằng CloudFormation/Terraform để dựng lại được ở bất cứ đâu. Và hãy vào Billing console kiểm tra xem bạn đang ở Free plan hay Paid plan — nếu là Paid plan thì account không bị đóng, nhưng vượt credit là bị tính tiền thật.</p>
+      </div>
+
+      <h3>Cách lấy nốt $100 còn lại</h3>
+      <p>Năm nhiệm vụ, mỗi cái $20. Làm hết trong tuần 1–5 của lộ trình, vì chúng trùng khớp với những gì bạn phải học dù sao đi nữa. Danh sách chính xác nằm ở <b>Billing and Cost Management → Free Tier</b> trong console — hãy đối chiếu, đừng tin mù bảng dưới.</p>
+
+      <ul class="checklist" data-group="credits">
+        <li><label><input type="checkbox" data-id="cr-ec2"><span>Launch rồi terminate một EC2 instance — làm ở tuần 3</span></label></li>
+        <li><label><input type="checkbox" data-id="cr-rds"><span>Cấu hình một RDS database — làm ở tuần 5, <b>xóa ngay trong 2 tiếng</b></span></label></li>
+        <li><label><input type="checkbox" data-id="cr-lambda"><span>Deploy một Lambda function — làm ở tuần 6</span></label></li>
+        <li><label><input type="checkbox" data-id="cr-bedrock"><span>Test một prompt trong Amazon Bedrock — 5 phút, không cần học sâu</span></label></li>
+        <li><label><input type="checkbox" data-id="cr-budget"><span>Tạo một budget trong AWS Budgets — làm ngay hôm nay, ở Ngày 0</span></label></li>
+      </ul>
+
+      <h3>Những thứ luôn miễn phí — sân chơi chính của bạn</h3>
+      <p>Đây là lý do lộ trình này dồn trọng tâm vào serverless: bạn có thể build và chạy 24/7 một ứng dụng thật mà gần như không tốn đồng credit nào.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Dịch vụ</th><th>Hạn mức miễn phí hàng tháng</th><th>Dùng để học gì</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="svc">Lambda</td><td class="num">1M request + 400.000 GB-giây</td><td>Compute, event-driven, cold start</td></tr>
+            <tr><td class="svc">DynamoDB</td><td class="num">25 GB + 25 WCU/25 RCU</td><td>NoSQL, partition key, GSI, Streams</td></tr>
+            <tr><td class="svc">CloudFront</td><td class="num">1 TB out + 10M request</td><td>CDN, cache, OAC, edge</td></tr>
+            <tr><td class="svc">CloudWatch</td><td class="num">10 metric + 10 alarm + 5 GB log</td><td>Monitoring, alarm, Logs Insights</td></tr>
+            <tr><td class="svc">SNS / SQS</td><td class="num">1M publish / 1M request</td><td>Decoupling, fanout, DLQ</td></tr>
+            <tr><td class="svc">Step Functions</td><td class="num">4.000 state transition</td><td>Orchestration, retry, catch</td></tr>
+            <tr><td class="svc">Cognito</td><td class="num">~10.000 người dùng hoạt động</td><td>Authentication, user pool</td></tr>
+            <tr><td class="svc">Data transfer out</td><td class="num">100 GB / tháng</td><td>Đủ thoải mái cho mọi lab</td></tr>
+            <tr><td class="svc">IAM, VPC, Security Group</td><td class="num">Miễn phí hoàn toàn</td><td>Nền tảng — học nhiều nhất ở đây</td></tr>
+            <tr><td class="svc">CloudFormation, Auto Scaling</td><td class="num">Miễn phí (chỉ trả cho tài nguyên tạo ra)</td><td>IaC, elasticity</td></tr>
+            <tr><td class="svc">CloudTrail</td><td class="num">1 trail management event</td><td>Audit, governance</td></tr>
+            <tr><td class="svc">SSM Parameter Store</td><td class="num">Standard parameter miễn phí</td><td>Thay thế Secrets Manager khi học</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">Chọn region — quyết định một lần, không đổi</div>
+        <p>Dùng <b>us-east-1 (N. Virginia)</b> cho toàn bộ lộ trình. Rẻ nhất, có đủ mọi dịch vụ, mọi tutorial đều viết cho nó. Latency cao hơn từ Việt Nam nhưng khi học thì điều đó không quan trọng. <code>ap-southeast-1</code> (Singapore) gần hơn nhưng đắt hơn khoảng 10–25%.</p>
+        <p>Ngoại lệ duy nhất: tuần 4 và tuần 11 khi làm cross-region replication — lúc đó mới bật region thứ hai, và xóa sạch ngay sau đó. <b>Tài nguyên bị bỏ quên ở một region bạn không bao giờ mở lại chính là cách phổ biến nhất để đốt sạch credit.</b></p>
+      </div>
+    </section>
+
+    <!-- ================= TRAPS ================= -->
+    <section id="traps">
+      <div class="section-head">
+        <div class="eyebrow">Bối cảnh · Quản trị chi phí</div>
+        <h2>Bảng bẫy tiền</h2>
+      </div>
+
+      <p>Học thuộc bảng này trước khi bấm nút Create bất cứ thứ gì. Giá tham khảo tại us-east-1, quy đổi ra một tháng chạy liên tục — hãy kiểm tra lại trên trang pricing chính thức vì giá có thể thay đổi.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Tài nguyên</th><th>Giá xấp xỉ</th><th>Nếu chạy 1 tháng</th><th>Phán quyết</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="svc">EC2 t3.micro</td><td class="num">$0,0104 / giờ</td><td class="num">~$7,5</td><td><span class="chip chip-watch">◐ Lab 3 tiếng = $0,03</span></td></tr>
+            <tr><td class="svc">EBS gp3 8 GB</td><td class="num">$0,08 / GB-tháng</td><td class="num">~$0,64</td><td><span class="chip chip-watch">◐ Volume mồ côi vẫn tính tiền</span></td></tr>
+            <tr><td class="svc">Public IPv4 / Elastic IP</td><td class="num">$0,005 / giờ / IP</td><td class="num">~$3,6</td><td><span class="chip chip-watch">◐ Tính cả khi không dùng</span></td></tr>
+            <tr><td class="svc">Application Load Balancer</td><td class="num">$0,0225 / giờ + LCU</td><td class="num">~$17</td><td><span class="chip chip-watch">◐ Chỉ bật trong buổi lab</span></td></tr>
+            <tr><td class="svc">RDS db.t4g.micro</td><td class="num">$0,016 / giờ + storage</td><td class="num">~$14</td><td><span class="chip chip-watch">◐ Bật 2 tiếng rồi xóa</span></td></tr>
+            <tr><td class="svc">Route 53 hosted zone</td><td class="num">$0,50 / zone / tháng</td><td class="num">~$0,5</td><td><span class="chip chip-watch">◐ Chấp nhận được</span></td></tr>
+            <tr><td class="svc">KMS customer managed key</td><td class="num">$1 / key / tháng</td><td class="num">~$1</td><td><span class="chip chip-watch">◐ Dùng AWS managed key thay thế</span></td></tr>
+            <tr><td class="svc">Secrets Manager</td><td class="num">$0,40 / secret / tháng</td><td class="num">~$0,4</td><td><span class="chip chip-watch">◐ Dùng Parameter Store</span></td></tr>
+            <tr><td class="svc">VPC Interface Endpoint</td><td class="num">$0,01 / giờ / AZ</td><td class="num">~$7,2</td><td><span class="chip chip-burn">● Gateway Endpoint thì miễn phí</span></td></tr>
+            <tr><td class="svc">NAT Gateway</td><td class="num">$0,045 / giờ + $0,045 / GB</td><td class="num">~$33</td><td><span class="chip chip-burn">● Kẻ giết credit số 1</span></td></tr>
+            <tr><td class="svc">Site-to-Site VPN</td><td class="num">$0,05 / giờ</td><td class="num">~$36</td><td><span class="chip chip-burn">● Chỉ học lý thuyết</span></td></tr>
+            <tr><td class="svc">Transit Gateway</td><td class="num">$0,05 / giờ / attachment</td><td class="num">~$36+</td><td><span class="chip chip-burn">● Chỉ học lý thuyết</span></td></tr>
+            <tr><td class="svc">Global Accelerator</td><td class="num">$0,025 / giờ</td><td class="num">~$18</td><td><span class="chip chip-burn">● Chỉ học lý thuyết</span></td></tr>
+            <tr><td class="svc">EKS control plane</td><td class="num">$0,10 / giờ</td><td class="num">~$73</td><td><span class="chip chip-burn">● Ngoài phạm vi SAA</span></td></tr>
+            <tr><td class="svc">Redshift / OpenSearch / EMR</td><td class="num">từ $0,25 / giờ</td><td class="num">~$180+</td><td><span class="chip chip-burn">● Tuyệt đối không bật</span></td></tr>
+            <tr><td class="svc">Direct Connect</td><td class="num">Cần cổng vật lý</td><td class="num">—</td><td><span class="chip chip-burn">● Không lab được</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">Bài học kiến trúc ẩn trong bảng này</div>
+        <p>NAT Gateway đắt gấp bốn lần cái EC2 mà nó phục vụ. Đó không phải chuyện vặt của sinh viên nghèo — đó chính là <b>Domain 4 của đề thi SAA</b>. Khi đề hỏi "làm sao để private subnet gọi S3 mà giảm chi phí", đáp án là <b>S3 Gateway Endpoint</b> (miễn phí), không phải NAT Gateway. Bạn sẽ nhớ điều này mãi mãi vì đã tự tay tránh nó.</p>
+      </div>
+    </section>
+
+    <!-- ================= DAY 0 ================= -->
+    <section id="day0">
+      <div class="section-head">
+        <div class="eyebrow">Trước khi học bất cứ thứ gì</div>
+        <h2>Ngày 0 — khóa ví lại</h2>
+      </div>
+
+      <p>Khoảng 2 tiếng. Làm hết trước khi tạo tài nguyên đầu tiên. Đây không phải thủ tục hành chính — đây là nội dung thi thật, phần Security chiếm 30% đề.</p>
+
+      <ul class="checklist" data-group="day0">
+        <li><label><input type="checkbox" data-id="d0-mfa"><span><b>Bật MFA cho root account</b> (Google Authenticator trên điện thoại). Xong thì cất root đi, không dùng nữa.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-user"><span><b>Tạo một admin user riêng</b> qua IAM Identity Center (khuyến nghị) hoặc IAM user với policy <code>AdministratorAccess</code>. Bật MFA cho nó luôn.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-budget"><span><b>Tạo 3 budget:</b> zero-spend budget, budget $5/tháng, budget $20/tháng. Gắn email cảnh báo ở ngưỡng 50% / 80% / 100%. <em>Đây cũng là 1 trong 5 nhiệm vụ ăn $20.</em></span></label></li>
+        <li><label><input type="checkbox" data-id="d0-anomaly"><span><b>Bật Cost Anomaly Detection</b> — miễn phí, gửi mail khi chi tiêu bất thường.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-alerts"><span><b>Bật Free Tier usage alerts</b> trong Billing preferences.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-cli"><span><b>Cài AWS CLI v2</b> (máy bạn chưa có) và cấu hình profile. Xem lệnh bên dưới.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-trail"><span><b>Bật CloudTrail</b> — một trail management event là miễn phí. Vào xem event log để hiểu console thực chất chỉ là API call.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-plan"><span><b>Kiểm tra bạn đang ở Free plan hay Paid plan</b> tại Billing console → Free Tier, và ghi lại số dư credit hiện tại.</span></label></li>
+        <li><label><input type="checkbox" data-id="d0-git"><span><b>Tạo repo GitHub</b> cho toàn bộ lab. Mọi template và script đều commit vào đó — vì account AWS này có ngày hết hạn, repo thì không.</span></label></li>
+      </ul>
+
+      <div class="block">
+        <div class="block-label">Cài AWS CLI trên WSL / Ubuntu</div>
+        <pre><code>curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip -q awscliv2.zip &amp;&amp; sudo ./aws/install
+aws --version
+
+# Cấu hình (dùng access key của IAM user vừa tạo, KHÔNG dùng root)
+aws configure --profile learn
+# region: us-east-1   output: json
+
+# Kiểm tra
+aws sts get-caller-identity --profile learn</code></pre>
+      </div>
+
+      <div class="block">
+        <div class="block-label">Ba lệnh bạn sẽ chạy mỗi ngày</div>
+        <pre><code># Hôm nay tiêu bao nhiêu?
+aws ce get-cost-and-usage --profile learn \
+  --time-period Start=$(date -d '7 days ago' +%F),End=$(date +%F) \
+  --granularity DAILY --metrics UnblendedCost \
+  --group-by Type=DIMENSION,Key=SERVICE
+
+# Còn EC2 nào đang chạy không?
+aws ec2 describe-instances --profile learn --region us-east-1 \
+  --filters "Name=instance-state-name,Values=running" \
+  --query "Reservations[].Instances[].[InstanceId,InstanceType,LaunchTime]" --output table
+
+# Còn EBS volume mồ côi nào không?
+aws ec2 describe-volumes --profile learn --region us-east-1 \
+  --filters "Name=status,Values=available" \
+  --query "Volumes[].[VolumeId,Size,CreateTime]" --output table</code></pre>
+      </div>
+    </section>
+
+    <!-- ================= WEEKS ================= -->
+    <section id="weeks">
+      <div class="section-head">
+        <div class="eyebrow">Lộ trình chính · 12 tuần × ~10 giờ</div>
+        <h2>Từ cơ bản đến thi được</h2>
+      </div>
+
+      <p class="lede">Nhịp đề xuất: 5 buổi × 2 giờ mỗi tuần. Bắt đầu 17/08/2026, kết thúc phần học khoảng 08/11/2026, thi trong tháng 11 — vẫn còn ba tháng free plan để làm dự án DR hybrid sau đó. Mỗi tuần chia đôi: khoảng 60% đọc và xem, 40% gõ tay vào console và CLI.</p>
+
+      <div class="callout">
+        <div class="callout-title">Nghi thức bắt buộc cuối mỗi buổi lab</div>
+        <p>Chưa dọn dẹp thì buổi học chưa kết thúc. Mỗi tuần bên dưới đều có phần <b>Dọn dẹp</b> — tick hết mới được đóng máy. Thứ tự xóa luôn ngược với thứ tự tạo: Auto Scaling Group → Load Balancer → Target Group → Instance → EBS volume → Snapshot → Elastic IP.</p>
+      </div>
+
+      <div class="weeks">
+
+        <!-- W1 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">01</div>
+            <div class="week-title">
+              <h3>Nền móng và quyền hạn</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 1 · Security</span>
+                <span class="chip chip-dom">Domain 4 · Cost</span>
+                <span class="chip chip-free">○ Miễn phí 100%</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Mô hình cloud và shared responsibility model. Region, Availability Zone, Edge location, Local Zone — và tại sao AZ là đơn vị của tính sẵn sàng. IAM cho thật kỹ: user, group, role, policy; phân biệt identity policy với resource policy; trust policy là gì; vì sao role tốt hơn access key. IAM Identity Center. Các mô hình giá: On-Demand, Spot, Reserved Instance, Savings Plan, Dedicated Host — chỉ cần hiểu khi nào chọn cái nào.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Viết tay một IAM policy JSON chỉ cho phép <code>s3:GetObject</code> trên đúng một bucket, gắn vào user test, rồi kiểm chứng bằng <b>IAM Policy Simulator</b>.</li>
+              <li>Tạo một IAM role cho EC2, hiểu instance profile là gì.</li>
+              <li>Bật <b>IAM Access Analyzer</b> (miễn phí) và đọc kết quả.</li>
+              <li>Vào Cost Explorer, tự tay dựng một report lọc theo service.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w1">
+            <li><label><input type="checkbox" data-id="w1-a"><span>Hoàn thành lab IAM + Policy Simulator</span></label></li>
+            <li><label><input type="checkbox" data-id="w1-b"><span>Giải thích được bằng lời: khác nhau giữa role và user, giữa identity policy và resource policy</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W2 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">02</div>
+            <div class="week-title">
+              <h3>VPC — xương sống của mọi câu hỏi</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 1 + 2</span>
+                <span class="chip chip-watch">◐ ~$0,10</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>CIDR và cách chia subnet. Public subnet khác private subnet ở chỗ nào (gợi ý: chỉ ở route table). Internet Gateway, route table, NAT Gateway và NAT instance. <b>Security Group so với Network ACL</b> — stateful với stateless, đây là câu hỏi kinh điển. VPC Peering và vì sao nó không transitive. VPC Endpoint: Gateway (S3, DynamoDB — miễn phí) so với Interface/PrivateLink (mất tiền). VPC Flow Logs. DNS trong VPC.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Dựng tay một VPC <code>10.0.0.0/16</code> trải 2 AZ, mỗi AZ một public và một private subnet. <b>Không dùng wizard</b> — tạo từng thành phần để hiểu chúng ghép vào nhau ra sao.</li>
+              <li>Launch một <code>t3.micro</code> ở private subnet và kết nối vào bằng <b>SSM Session Manager</b> — không cần bastion, không cần public IP, không cần SSH key. Đây là cách làm đúng và cũng là cách rẻ nhất.</li>
+              <li>Tạo <b>S3 Gateway Endpoint</b> để instance private đọc được S3 mà không cần NAT Gateway. Tự tay chứng minh cho mình thấy nó hoạt động.</li>
+              <li>Bật Flow Logs vào CloudWatch, chặn một port bằng NACL, rồi tìm gói tin bị REJECT trong log.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <div class="block-label">Dọn dẹp</div>
+            <ul class="checklist" data-group="w2">
+              <li><label><input type="checkbox" data-id="w2-a"><span>Terminate EC2 instance</span></label></li>
+              <li><label><input type="checkbox" data-id="w2-b"><span>Xóa Flow Logs và log group</span></label></li>
+              <li><label><input type="checkbox" data-id="w2-c"><span>Giữ lại VPC — VPC không mất phí, tuần sau còn dùng</span></label></li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- W3 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">03</div>
+            <div class="week-title">
+              <h3>EC2, EBS, Load Balancer, Auto Scaling</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 + 3</span>
+                <span class="chip chip-watch">◐ ~$1</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Họ instance và cách đọc tên. User data, metadata, IMDSv2. AMI và snapshot. Các loại EBS: gp3, io2, st1, sc1 — và instance store khác gì. <b>EBS so với EFS so với S3</b>: một câu hỏi thi rất hay gặp. Load balancer: ALB (layer 7), NLB (layer 4), Gateway LB — target group, health check, sticky session. Auto Scaling Group: launch template, scaling policy (target tracking, step, scheduled), lifecycle hook, cooldown. Placement group.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab — buổi tốn tiền nhất cả khóa, làm gọn trong 3 tiếng</div>
+            <ul>
+              <li>Launch template với user data tự cài nginx và in ra instance ID.</li>
+              <li>ASG min 1 / desired 2 / max 3 trải 2 AZ, đặt sau một ALB.</li>
+              <li>Refresh trang liên tục để thấy request đi luân phiên giữa các instance.</li>
+              <li>Tắt nginx trên một máy, xem health check fail và ASG tự thay thế máy đó. <em>Đây là khoảnh khắc "à hóa ra self-healing là thế".</em></li>
+              <li>Tạo snapshot một EBS volume, xóa volume, rồi restore lại từ snapshot.</li>
+              <li>Xong nhiệm vụ credit "launch và terminate EC2" — nhận $20.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <div class="block-label">Dọn dẹp — theo đúng thứ tự này</div>
+            <ul class="checklist" data-group="w3">
+              <li><label><input type="checkbox" data-id="w3-a"><span>Xóa Auto Scaling Group (đặt desired = 0 trước)</span></label></li>
+              <li><label><input type="checkbox" data-id="w3-b"><span>Xóa Load Balancer, rồi xóa Target Group</span></label></li>
+              <li><label><input type="checkbox" data-id="w3-c"><span>Terminate mọi instance còn lại</span></label></li>
+              <li><label><input type="checkbox" data-id="w3-d"><span>Xóa EBS volume ở trạng thái <code>available</code></span></label></li>
+              <li><label><input type="checkbox" data-id="w3-e"><span>Xóa snapshot và AMI tự tạo</span></label></li>
+              <li><label><input type="checkbox" data-id="w3-f"><span>Release toàn bộ Elastic IP</span></label></li>
+              <li><label><input type="checkbox" data-id="w3-g"><span>Sáng hôm sau mở Cost Explorer kiểm tra lại</span></label></li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- W4 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">04</div>
+            <div class="week-title">
+              <h3>S3 và các loại lưu trữ</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 1 + 3 + 4</span>
+                <span class="chip chip-free">○ ~$0,05</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Storage class và bài toán chọn lớp: Standard, Intelligent-Tiering, Standard-IA, One Zone-IA, Glacier Instant Retrieval, Glacier Flexible Retrieval, Glacier Deep Archive — nhớ đặc điểm truy xuất và ngưỡng lưu tối thiểu. Lifecycle policy. Versioning và MFA delete. Replication CRR/SRR. Mã hóa: SSE-S3, SSE-KMS, SSE-C, client-side. Bucket policy so với ACL so với Block Public Access. Presigned URL. Static website hosting. Transfer Acceleration. Và EFS, FSx — biết use case là đủ.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Host một trang tĩnh trên S3, đặt CloudFront phía trước với <b>Origin Access Control</b>, khóa bucket khỏi truy cập public trực tiếp.</li>
+              <li>Bật versioning, upload đè file vài lần, khôi phục phiên bản cũ, hiểu delete marker.</li>
+              <li>Viết lifecycle rule chuyển object sang Glacier sau 30 ngày và xóa version cũ sau 7 ngày.</li>
+              <li>Tạo presigned URL bằng CLI, gửi cho bạn bè, xem nó hết hạn.</li>
+              <li>Viết bucket policy chỉ cho phép truy cập từ đúng một địa chỉ IP.</li>
+              <li>Bật cross-region replication sang một region khác, kiểm chứng, rồi tắt ngay.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <div class="block-label">Dọn dẹp</div>
+            <ul class="checklist" data-group="w4">
+              <li><label><input type="checkbox" data-id="w4-a"><span>Xóa <b>tất cả object version</b> — bật versioning nghĩa là xóa file thường không làm bucket trống</span></label></li>
+              <li><label><input type="checkbox" data-id="w4-b"><span>Xóa bucket ở region thứ hai (bẫy quên kinh điển)</span></label></li>
+              <li><label><input type="checkbox" data-id="w4-c"><span>Giữ CloudFront + bucket chính lại — sẽ dùng cho capstone</span></label></li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- W5 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">05</div>
+            <div class="week-title">
+              <h3>Cơ sở dữ liệu</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 + 3</span>
+                <span class="chip chip-watch">◐ ~$0,10</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>RDS: các engine, backup tự động, snapshot, point-in-time recovery, RDS Proxy. <b>Multi-AZ so với Read Replica</b> — đây là câu hỏi ra thi gần như chắc chắn: Multi-AZ là để chịu lỗi (standby không phục vụ đọc), Read Replica là để mở rộng đọc. Aurora: tầng lưu trữ chia 6 bản qua 3 AZ, replica, Global Database, Serverless v2. DynamoDB: partition key và sort key, LSI so với GSI, on-demand so với provisioned, DAX, Streams, TTL, Global Tables. ElastiCache: Redis so với Memcached. Redshift, Neptune, DocumentDB, Timestream — chỉ cần nhận ra use case.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li><b>DynamoDB</b> (miễn phí, chơi thoải mái): tạo bảng, thiết kế partition key, thêm GSI, so sánh Query với Scan trên vài nghìn item, bật TTL, bật Streams và nối vào một Lambda.</li>
+              <li><b>RDS</b> (đặt hẹn giờ 2 tiếng): tạo <code>db.t4g.micro</code> Single-AZ, kết nối từ EC2, tạo snapshot, restore từ snapshot, rồi <b>xóa và bỏ chọn "create final snapshot"</b>. Xong nhiệm vụ credit — nhận $20.</li>
+            </ul>
+          </div>
+          <div class="callout callout-danger">
+            <div class="callout-title">Cấm trong tuần này</div>
+            <p>Không bật Multi-AZ (nhân đôi giá). Không bật Aurora (đắt hơn nhiều và không có instance nhỏ rẻ). Không bật ElastiCache cluster. Ba thứ này học bằng tài liệu và sơ đồ — kiến thức thi được không đòi hỏi bạn phải chạy chúng.</p>
+          </div>
+          <ul class="checklist" data-group="w5">
+            <li><label><input type="checkbox" data-id="w5-a"><span>Đã xóa RDS instance và toàn bộ snapshot của nó</span></label></li>
+            <li><label><input type="checkbox" data-id="w5-b"><span>Viết được bảng so sánh Multi-AZ với Read Replica bằng lời của mình</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W6 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">06</div>
+            <div class="week-title">
+              <h3>Serverless — tuần build được portfolio</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 + 3 + 4</span>
+                <span class="chip chip-free">○ Miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Lambda: runtime, quan hệ giữa memory và CPU, timeout tối đa 15 phút, cold start và cách giảm, layer, biến môi trường, Lambda trong VPC (và cái giá của nó), reserved so với provisioned concurrency, event source mapping. API Gateway: REST so với HTTP so với WebSocket API, stage, authorizer, throttling, CORS. S3 event notification. Mẫu kiến trúc kinh điển API Gateway → Lambda → DynamoDB.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab — cái này giữ lại chạy vĩnh viễn</div>
+            <ul>
+              <li>Xây một REST API thật: <b>HTTP API Gateway → Lambda (Python) → DynamoDB</b>. Gợi ý chủ đề: rút gọn URL, hoặc API ghi chú có CRUD đầy đủ.</li>
+              <li>Deploy bằng <b>AWS SAM</b> hoặc CloudFormation, không click chuột. Commit template lên GitHub.</li>
+              <li>Nối frontend tĩnh ở S3 + CloudFront từ tuần 4 vào API này. Bạn vừa có một ứng dụng full-stack chạy trên AWS với chi phí gần bằng không — bỏ vào CV được.</li>
+              <li>Xong nhiệm vụ credit "deploy Lambda" — nhận $20. Tranh thủ vào Bedrock chạy một prompt để lấy nốt $20 nữa.</li>
+            </ul>
+          </div>
+          <div class="callout">
+            <div class="callout-title">Đặt retention cho log ngay</div>
+            <p>CloudWatch log group mặc định <b>giữ log vĩnh viễn</b>. Với 5 GB miễn phí mỗi tháng thì một Lambda bị lỗi lặp vô hạn cũng đủ ăn hết. Đặt retention 7 ngày cho mọi log group, ngay bây giờ:</p>
+            <pre><code>aws logs put-retention-policy --profile learn \
+  --log-group-name /aws/lambda/TEN-HAM --retention-in-days 7</code></pre>
+          </div>
+          <ul class="checklist" data-group="w6">
+            <li><label><input type="checkbox" data-id="w6-a"><span>API chạy được end-to-end</span></label></li>
+            <li><label><input type="checkbox" data-id="w6-b"><span>Template IaC đã commit lên GitHub</span></label></li>
+            <li><label><input type="checkbox" data-id="w6-c"><span>Đã đặt retention 7 ngày cho mọi log group</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W7 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">07</div>
+            <div class="week-title">
+              <h3>Tách rời hệ thống và tích hợp</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 · Resilient</span>
+                <span class="chip chip-free">○ Miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>SQS: standard so với FIFO, visibility timeout, dead-letter queue, long polling, delay queue. SNS: fanout, filter policy, các loại subscriber. Mẫu SNS → nhiều SQS. EventBridge: rule, schedule, custom bus, đối chiếu với CloudWatch Events. Step Functions: Standard so với Express, retry, catch, map, parallel. <b>Kinesis Data Streams so với Data Firehose so với SQS</b> — đề thi rất thích so sánh bộ ba này. Amazon MQ dành cho khi nào.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Fanout: một SNS topic đẩy vào hai SQS queue, mỗi queue một Lambda consumer khác nhau.</li>
+              <li>Cố tình làm Lambda lỗi, xem message rơi vào dead-letter queue sau số lần thử đã cấu hình.</li>
+              <li>Nghịch visibility timeout để tự thấy hiện tượng xử lý trùng lặp.</li>
+              <li>EventBridge rule chạy theo lịch, kích hoạt Lambda mỗi 5 phút.</li>
+              <li>Step Functions ba bước có retry và catch — dùng giao diện kéo thả rồi đọc lại ASL JSON sinh ra.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w7">
+            <li><label><input type="checkbox" data-id="w7-a"><span>Đã <b>tắt EventBridge schedule</b> — để chạy mãi sẽ sinh log vô ích</span></label></li>
+            <li><label><input type="checkbox" data-id="w7-b"><span>Nói được khi nào chọn SQS, khi nào chọn Kinesis</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W8 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">08</div>
+            <div class="week-title">
+              <h3>DNS, CDN và tầng biên</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 3 · Performance</span>
+                <span class="chip chip-watch">◐ ~$0,50</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Route 53: các loại record, alias khác CNAME ra sao và tại sao alias miễn phí. Bảy routing policy — simple, weighted, latency, failover, geolocation, geoproximity, multivalue — cùng health check. CloudFront: origin, OAC, cache behavior, TTL, invalidation, signed URL và signed cookie, CloudFront Functions so với Lambda@Edge. <b>CloudFront so với Global Accelerator</b>: cái đầu cache nội dung tĩnh, cái sau tối ưu đường mạng cho TCP/UDP. ACM cấp chứng chỉ miễn phí. WAF và Shield ở mức nhận biết.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Trên distribution CloudFront đã có: thêm cache behavior riêng cho <code>/api/*</code>, chạy invalidation, quan sát header <code>X-Cache</code> đổi giữa Hit và Miss.</li>
+              <li>Viết một CloudFront Function chèn security header.</li>
+              <li><b>Nếu chấp nhận chi $0,50:</b> tạo một hosted zone, thử weighted và failover routing với health check, rồi xóa zone sau hai ngày. Nếu muốn tiết kiệm tuyệt đối thì học phần này qua tài liệu — routing policy là kiến thức nhớ, không cần tay chạm.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w8">
+            <li><label><input type="checkbox" data-id="w8-a"><span>Thuộc bảng 7 routing policy và khi nào dùng cái nào</span></label></li>
+            <li><label><input type="checkbox" data-id="w8-b"><span>Đã xóa hosted zone nếu có tạo</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W9 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">09</div>
+            <div class="week-title">
+              <h3>Bảo mật chuyên sâu — miền nặng nhất của đề</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 1 · 30% đề thi</span>
+                <span class="chip chip-free">○ Miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Logic đánh giá quyền của IAM cho thật chắc: explicit deny thắng tất cả, rồi tới SCP, rồi resource policy và identity policy hợp lại. Permission boundary. Service Control Policy trong Organizations. Cross-account role kèm external ID. STS và <code>AssumeRole</code>. Cognito user pool so với identity pool. KMS: customer managed key so với AWS managed key, key policy, envelope encryption, rotation. Secrets Manager so với SSM Parameter Store — khác biệt chính là tự động xoay vòng và giá. WAF rule, Shield Standard so với Advanced. GuardDuty, Inspector, Macie, Security Hub, Detective — nhận diện đúng công cụ cho đúng bài toán là đủ.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Tạo hai IAM role trong cùng account và mô phỏng luồng cross-account <code>AssumeRole</code>, đọc kỹ trust policy.</li>
+              <li>Gắn permission boundary cho một role rồi tự chứng minh nó chặn được cả quyền admin.</li>
+              <li>Lưu một secret bằng SSM Parameter Store kiểu SecureString (miễn phí) và đọc từ Lambda — đúng cách làm thật, mà lại không mất $0,40/tháng.</li>
+              <li>Bật GuardDuty, xem finding mẫu trong một ngày, rồi <b>tắt đi</b>.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w9">
+            <li><label><input type="checkbox" data-id="w9-a"><span>Vẽ được sơ đồ thứ tự đánh giá quyền IAM</span></label></li>
+            <li><label><input type="checkbox" data-id="w9-b"><span>Đã tắt GuardDuty</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W10 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">10</div>
+            <div class="week-title">
+              <h3>Giám sát, vận hành và hạ tầng dạng mã</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 + 4</span>
+                <span class="chip chip-free">○ Miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>CloudWatch: metric, namespace, dimension, custom metric, alarm và composite alarm, dashboard, Logs Insights, CloudWatch Agent, Embedded Metric Format. CloudTrail: management event so với data event, organization trail. X-Ray cho tracing. AWS Config cho compliance (và cảnh giác giá). Systems Manager: Session Manager, Patch Manager, Parameter Store, Run Command. Trusted Advisor và Health Dashboard. CloudFormation: cấu trúc template, stack, change set, drift detection, nested stack, StackSet. Biết CDK, SAM, Elastic Beanstalk tồn tại và dùng khi nào.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab — kỹ năng đi làm quan trọng nhất trong cả khóa</div>
+            <ul>
+              <li>Đặt alarm trên metric <code>Errors</code> của Lambda, đẩy thông báo qua SNS về email của bạn. Cố tình gây lỗi để nhận được mail thật.</li>
+              <li>Viết một query Logs Insights tìm request chậm nhất.</li>
+              <li>Dựng một dashboard gom số liệu Lambda, DynamoDB và API Gateway.</li>
+              <li><b>Viết lại toàn bộ hạ tầng của tuần 6 bằng một template CloudFormation duy nhất.</b> Deploy, sửa template, tạo change set để xem trước thay đổi, rồi <code>delete-stack</code> xóa sạch trong một lệnh. Đây chính là nút "dọn dẹp" hoàn hảo mà bạn đã ao ước suốt 9 tuần qua.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w10">
+            <li><label><input type="checkbox" data-id="w10-a"><span>Nhận được email cảnh báo thật từ CloudWatch Alarm</span></label></li>
+            <li><label><input type="checkbox" data-id="w10-b"><span>Template CloudFormation deploy và delete thành công</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W11 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">11</div>
+            <div class="week-title">
+              <h3>Di trú, hybrid và khôi phục thảm họa</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Domain 2 · Resilient</span>
+                <span class="chip chip-free">○ Gần như miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Bảy chiến lược di trú (7R). Migration Hub, Application Discovery Service, AWS MGN, DMS kèm SCT. Storage Gateway ba kiểu: File, Volume, Tape. DataSync và Transfer Family. Snowball, Snowmobile — chọn theo dung lượng và thời gian. <b>Direct Connect so với Site-to-Site VPN</b>, và mẫu DX có VPN dự phòng. Transit Gateway, PrivateLink. Outposts, Local Zones, Wavelength. Và trọng tâm: <b>bốn chiến lược DR</b> — Backup &amp; Restore, Pilot Light, Warm Standby, Multi-Site Active/Active — cùng RTO và RPO tương ứng. AWS Backup. Route 53 failover với health check.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Lab</div>
+            <ul>
+              <li>Tạo một AWS Backup plan cho EBS snapshot theo lịch.</li>
+              <li>Bật S3 cross-region replication như một bài Backup &amp; Restore thu nhỏ.</li>
+              <li>Vẽ kiến trúc cho cả bốn cấp DR bằng draw.io, ghi rõ RTO/RPO và chi phí ước tính của từng cấp.</li>
+              <li>Đọc whitepaper <i>Disaster Recovery of Workloads on AWS</i> — đọc trọn vẹn, không lướt.</li>
+            </ul>
+          </div>
+          <div class="callout">
+            <div class="callout-title">Tuần này là bản lề cho mục tiêu dài hạn của bạn</div>
+            <p>Đây chính là nền cho dự án thiết kế DR site cho hybrid cloud và on-premise mà bạn muốn làm sau. Direct Connect, Transit Gateway và Site-to-Site VPN không lab được vì quá đắt — nhưng phần thiết kế thì học hoàn toàn bằng tài liệu và sơ đồ, và đó mới là phần đề thi hỏi. Giữ lại toàn bộ sơ đồ bạn vẽ tuần này.</p>
+          </div>
+          <ul class="checklist" data-group="w11">
+            <li><label><input type="checkbox" data-id="w11-a"><span>Vẽ xong 4 sơ đồ DR kèm RTO/RPO</span></label></li>
+            <li><label><input type="checkbox" data-id="w11-b"><span>Đã tắt CRR và xóa bucket ở region phụ</span></label></li>
+          </ul>
+        </article>
+
+        <!-- W12 -->
+        <article class="week">
+          <div class="week-head">
+            <div class="week-num">12</div>
+            <div class="week-title">
+              <h3>Ôn tập và thi thử</h3>
+              <div class="week-tags">
+                <span class="chip chip-dom">Cả 4 domain</span>
+                <span class="chip chip-free">○ Miễn phí</span>
+              </div>
+            </div>
+          </div>
+          <div class="block">
+            <div class="block-label">Học</div>
+            <p>Đọc Well-Architected Framework, cả sáu trụ cột. Đọc lại trang FAQ chính thức của S3, EC2, VPC, RDS, DynamoDB, Lambda — riêng việc này đã phủ một phần rất lớn của đề. Rồi tự tay lập các bảng so sánh dưới đây; viết ra bằng tay, không copy.</p>
+          </div>
+          <div class="block">
+            <div class="block-label">Mười bảng so sánh phải tự viết được</div>
+            <ul>
+              <li>SQS · SNS · EventBridge · Kinesis</li>
+              <li>EBS · EFS · S3 · FSx · Instance store</li>
+              <li>Multi-AZ · Read Replica · Global Database</li>
+              <li>Security Group · Network ACL</li>
+              <li>ALB · NLB · Gateway Load Balancer</li>
+              <li>CloudFront · Global Accelerator</li>
+              <li>Cognito user pool · identity pool</li>
+              <li>SQS Standard · SQS FIFO</li>
+              <li>Gateway Endpoint · Interface Endpoint · NAT Gateway</li>
+              <li>Bốn chiến lược DR theo RTO/RPO và chi phí</li>
+            </ul>
+          </div>
+          <div class="block">
+            <div class="block-label">Lịch thi thử</div>
+            <ul>
+              <li>Bốn bài full 65 câu, bấm giờ đúng 130 phút, ngồi liền mạch không nghỉ.</li>
+              <li>Sau mỗi bài: review <b>toàn bộ</b> câu sai <em>và</em> mọi câu đúng nhưng do đoán. Ghi vào một sổ lỗi.</li>
+              <li>Ngưỡng đăng ký thi thật: đạt <b>từ 80% trở lên ở hai bài liên tiếp</b>. Chưa đạt thì lùi lịch một tuần và cày lại đúng những miền yếu.</li>
+            </ul>
+          </div>
+          <ul class="checklist" data-group="w12">
+            <li><label><input type="checkbox" data-id="w12-a"><span>Thi thử #1</span></label></li>
+            <li><label><input type="checkbox" data-id="w12-b"><span>Thi thử #2</span></label></li>
+            <li><label><input type="checkbox" data-id="w12-c"><span>Thi thử #3</span></label></li>
+            <li><label><input type="checkbox" data-id="w12-d"><span>Thi thử #4 — đạt ≥ 80% hai bài liên tiếp</span></label></li>
+            <li><label><input type="checkbox" data-id="w12-e"><span>Đặt lịch thi SAA-C03 tại Pearson VUE</span></label></li>
+          </ul>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ================= CAPSTONE ================= -->
+    <section id="capstone">
+      <div class="section-head">
+        <div class="eyebrow">Sản phẩm mang đi phỏng vấn</div>
+        <h2>Capstone — thứ bạn còn lại sau 12 tuần</h2>
+      </div>
+
+      <p>Chứng chỉ mở cửa vòng lọc CV. Thứ khiến bạn qua được vòng phỏng vấn là một hệ thống bạn tự dựng và giải thích được từng lựa chọn. Kiến trúc dưới đây chạy hoàn toàn trong hạn mức always-free, nên bạn có thể để nó sống suốt và demo bất cứ lúc nào.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tầng</th><th>Dịch vụ</th><th>Chi phí</th><th>Chứng minh được điều gì</th></tr></thead>
+          <tbody>
+            <tr><td class="svc">Frontend</td><td>S3 + CloudFront + OAC</td><td class="num">~$0</td><td>Static hosting, CDN, khóa origin</td></tr>
+            <tr><td class="svc">API</td><td>API Gateway HTTP API</td><td class="num">~$0</td><td>REST, throttling, CORS</td></tr>
+            <tr><td class="svc">Compute</td><td>Lambda (Python)</td><td class="num">~$0</td><td>Serverless, IAM role tối thiểu quyền</td></tr>
+            <tr><td class="svc">Dữ liệu</td><td>DynamoDB + Streams</td><td class="num">~$0</td><td>Thiết kế NoSQL, GSI, event-driven</td></tr>
+            <tr><td class="svc">Bất đồng bộ</td><td>SQS + DLQ + Lambda</td><td class="num">~$0</td><td>Decoupling, xử lý lỗi</td></tr>
+            <tr><td class="svc">Xác thực</td><td>Cognito user pool</td><td class="num">~$0</td><td>Auth, JWT authorizer</td></tr>
+            <tr><td class="svc">Quan sát</td><td>CloudWatch alarm + dashboard</td><td class="num">~$0</td><td>Vận hành, cảnh báo</td></tr>
+            <tr><td class="svc">Hạ tầng</td><td>CloudFormation / SAM</td><td class="num">~$0</td><td>IaC, tái lập được ở account khác</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">Điều làm nên khác biệt</div>
+        <p>Viết một file <code>README.md</code> giải thích <b>vì sao</b> mỗi lựa chọn được đưa ra, kèm ước tính chi phí ở mức 1.000 người dùng và ở mức 1 triệu người dùng, cùng một mục "nếu làm lại tôi sẽ đổi gì". Đó chính xác là tư duy mà đề SAA kiểm tra, và cũng là câu người phỏng vấn sẽ hỏi.</p>
+      </div>
+    </section>
+
+    <!-- ================= EXAM ================= -->
+    <section id="exam">
+      <div class="section-head">
+        <div class="eyebrow">Kỳ thi</div>
+        <h2>SAA-C03 — thông số và cách phân bổ công sức</h2>
+      </div>
+
+      <p>Tính đến thời điểm viết, <b>SAA-C03 vẫn là phiên bản chính thức</b> trên tài liệu certification của AWS. Có vài blog nói về "SAA-C04" nhưng không có nguồn chính thức nào từ AWS xác nhận — hãy tự kiểm tra lại trang certification của AWS trước khi mua tài liệu ôn.</p>
+
+      <div class="cols">
+        <div class="panel">
+          <h4>Thông số bài thi</h4>
+          <ul>
+            <li><b>65 câu</b> — 50 câu tính điểm, 15 câu thử nghiệm không tính</li>
+            <li><b>130 phút</b></li>
+            <li><b>720 / 1000</b> điểm để đậu, chấm bù giữa các miền</li>
+            <li><b>150 USD</b>, thi tại Pearson VUE hoặc online có giám thị</li>
+            <li>Trắc nghiệm một đáp án hoặc nhiều đáp án, không trừ điểm khi đoán</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Trọng số bốn miền</h4>
+          <ul>
+            <li><b>30%</b> — Thiết kế kiến trúc bảo mật</li>
+            <li><b>26%</b> — Thiết kế kiến trúc có khả năng phục hồi</li>
+            <li><b>24%</b> — Thiết kế kiến trúc hiệu năng cao</li>
+            <li><b>20%</b> — Thiết kế kiến trúc tối ưu chi phí</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">Ba mẹo lấy điểm rẻ nhất</div>
+        <ul>
+          <li><b>Bảo mật nặng nhất — 30%.</b> Nếu chỉ còn thời gian ôn một thứ, ôn IAM và mã hóa.</li>
+          <li><b>Loại trừ trước, chọn sau.</b> Phần lớn câu hỏi có hai đáp án sai rõ ràng. Trong hai đáp án còn lại, hãy đọc lại đề tìm từ khóa ràng buộc: "chi phí thấp nhất", "ít thao tác vận hành nhất", "thay đổi code ít nhất". Từ khóa đó mới là thứ quyết định.</li>
+          <li><b>"Ít thao tác vận hành nhất" gần như luôn nghĩa là managed hoặc serverless.</b> "Chi phí thấp nhất" thì thường là Spot, S3 lifecycle, hoặc Gateway Endpoint thay NAT.</li>
+        </ul>
+      </div>
+
+      <p>Về phí thi: săn voucher giảm 50% dành cho người đã có một chứng chỉ AWS, hoặc qua các chương trình dành cho sinh viên như AWS Educate và AWS re/Start. Nếu ngân sách quá chặt, thi <b>CLF-C02</b> (100 USD) trước cũng là một đường vòng hợp lý — đậu là được voucher giảm giá cho kỳ thi tiếp theo. Nhưng nếu tự tin, đi thẳng SAA-C03 vẫn tiết kiệm hơn.</p>
+    </section>
+
+    <!-- ================= RESOURCES ================= -->
+    <section id="resources">
+      <div class="section-head">
+        <div class="eyebrow">Tài liệu</div>
+        <h2>Miễn phí trước, trả tiền sau — và chỉ hai thứ đáng trả tiền</h2>
+      </div>
+
+      <div class="cols">
+        <div class="panel">
+          <h4>Miễn phí, chất lượng cao</h4>
+          <ul>
+            <li><b>AWS Skill Builder</b> — gói free có learning plan cho Solutions Architect Associate và bộ 20 câu hỏi luyện tập chính thức</li>
+            <li><b>Exam Guide chính thức</b> — đọc kỹ danh sách in-scope và out-of-scope services, đây là ranh giới ôn tập của bạn</li>
+            <li><b>Trang FAQ của AWS</b> — S3, EC2, VPC, RDS, DynamoDB, Lambda. Đọc hết sáu trang này là bước có hiệu suất cao nhất mà hầu hết mọi người bỏ qua</li>
+            <li><b>Whitepaper</b> — Well-Architected Framework, Security Pillar, và Disaster Recovery of Workloads on AWS</li>
+            <li><b>workshops.aws</b> — workshop chính thức, có kèm hướng dẫn dọn dẹp tài nguyên</li>
+            <li><b>AWS Cloud Quest</b> — học qua game, miễn phí phần Cloud Practitioner</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Đáng bỏ tiền — tổng dưới 30 USD</h4>
+          <ul>
+            <li><b>Bộ đề luyện Tutorials Dojo cho SAA-C03</b> (~15 USD) — phần giải thích từng đáp án là thứ đắt giá nhất, không phải bản thân câu hỏi</li>
+            <li><b>Khóa video của Stephane Maarek trên Udemy</b> (~12–15 USD khi giảm giá — Udemy giảm giá gần như liên tục, đừng bao giờ mua giá gốc)</li>
+          </ul>
+          <p class="stat-note">Đừng mua nhiều hơn hai thứ này. Mua thêm khóa học chỉ tạo cảm giác đang tiến bộ chứ không tạo ra tiến bộ.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RULES ================= -->
+    <section id="rules">
+      <div class="section-head">
+        <div class="eyebrow">Kỷ luật</div>
+        <h2>Tám quy tắc giữ cho hóa đơn bằng không</h2>
+      </div>
+
+      <ol>
+        <li><b>Một region duy nhất.</b> us-east-1. Đổi region là công thức để quên tài nguyên.</li>
+        <li><b>Không dọn dẹp thì buổi lab chưa xong.</b> Không có ngoại lệ, kể cả khi đã 1 giờ sáng.</li>
+        <li><b>Gắn tag <code>Project=learn</code> cho mọi thứ.</b> Rồi dùng Tag Editor để tìm và xóa hàng loạt khi cần.</li>
+        <li><b>Mở Cost Explorer mỗi sáng, 30 giây.</b> Phát hiện sau một ngày tốn vài xu; phát hiện sau một tháng thì hết credit.</li>
+        <li><b>Thấy chữ Gateway, Cluster, Dedicated, Multi-AZ, Provisioned — tra giá trước khi bấm Create.</b> Năm từ này là nơi tiền bốc hơi.</li>
+        <li><b>Không để EC2 chạy qua đêm.</b> Bao giờ cũng vậy.</li>
+        <li><b>Đặt retention 7 ngày cho mọi CloudWatch log group.</b> Mặc định là giữ vĩnh viễn.</li>
+        <li><b>Ưu tiên CloudFormation hơn click chuột</b> ngay khi bạn đủ khả năng. <code>delete-stack</code> là nút dọn dẹp đáng tin cậy duy nhất tồn tại.</li>
+      </ol>
+
+      <div class="callout callout-danger">
+        <div class="callout-title">Đặt ba mốc nhắc nhở vào lịch ngay hôm nay</div>
+        <ul>
+          <li><b>06/11/2026</b> — còn 3 tháng free plan. Kiểm tra số dư credit, quyết định có nâng cấp lên Paid plan hay không.</li>
+          <li><b>06/01/2027</b> — còn 1 tháng. Export mọi thứ cần giữ, đảm bảo toàn bộ hạ tầng đã nằm dưới dạng mã trên GitHub.</li>
+          <li><b>06/02/2027</b> — free plan hết hạn, account sẽ tự đóng nếu không nâng cấp. AWS giữ dữ liệu thêm 90 ngày.</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="page-foot">
+      <p>Giá tham khảo tại us-east-1 và có thể thay đổi — luôn đối chiếu trang pricing chính thức trước khi tạo tài nguyên. Thông tin Free Tier dựa trên tài liệu AWS Billing về mô hình áp dụng cho account mở sau 15/07/2025; thông số kỳ thi lấy từ exam guide SAA-C03 chính thức.</p>
+      <p>Tiến độ bạn tick được lưu ngay trong trình duyệt này.</p>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    var KEY = "saa-plan-progress-v1";
+    var boxes = Array.prototype.slice.call(document.querySelectorAll(".checklist input[type=checkbox]"));
+    var saved = {};
+
+    try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
+
+    function render() {
+      var done = boxes.filter(function (b) { return b.checked; }).length;
+      var pct = boxes.length ? Math.round((done / boxes.length) * 100) : 0;
+      document.getElementById("bar").style.width = pct + "%";
+      document.getElementById("pct").textContent = pct + "%";
+      document.getElementById("counts").textContent = done + " / " + boxes.length + " mục";
+    }
+
+    boxes.forEach(function (box) {
+      var id = box.getAttribute("data-id");
+      if (saved[id]) { box.checked = true; }
+      box.addEventListener("change", function () {
+        saved[id] = box.checked;
+        try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+        render();
+      });
+    });
+
+    render();
+
+    var end = new Date(2027, 2, 6);
+    var now = new Date();
+    var days = Math.ceil((end - now) / 86400000);
+    var el = document.getElementById("daysleft");
+    if (days > 0) {
+      el.textContent = "Còn " + days + " ngày";
+    } else {
+      el.textContent = "Đã hết hạn";
+    }
+  })();
+</script>

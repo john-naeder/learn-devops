@@ -1,0 +1,204 @@
+---
+# ===========================================================================
+# TUẦN 8 — Ansible ĐO hành vi cache thay vì chỉ đọc lý thuyết
+#
+#   ansible-playbook site.yml                  # đo cache + header + A/B
+#   ansible-playbook site.yml --tags cache
+#   ansible-playbook site.yml --tags invalidate
+#   ansible-playbook site.yml --tags route53   # chỉ khi enable_route53 = true
+# ===========================================================================
+
+- name: "Tuần 8 — đo hành vi tầng biên"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    - name: Đợi distribution sẵn sàng
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/index.html"
+        status_code: 200
+      register: san_sang
+      retries: 20
+      delay: 15
+      until: san_sang.status is defined and san_sang.status == 200
+      tags: [cache]
+
+    # =================================================================== CACHE
+    #
+    # Bài đo 1: cùng một URL gọi hai lần → Miss rồi Hit.
+
+    - name: "Đo 1 — gọi /index.html hai lần"
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/index.html"
+        return_content: false
+      register: lan
+      loop: [1, 2]
+      tags: [cache]
+
+    - name: Kết quả đo 1
+      ansible.builtin.debug:
+        msg:
+          - "lần 1: {{ lan.results[0]['x_cache'] | default('?') }}"
+          - "lần 2: {{ lan.results[1]['x_cache'] | default('?') }}"
+      tags: [cache]
+
+    # Bài đo 2: cache key bỏ qua utm_*.
+    #
+    # Đây là điểm quan trọng nhất của tuần. Cache policy chỉ đưa "trang" và
+    # "ngon_ngu" vào cache key. utm_source không nằm trong đó, nên hai URL
+    # dưới đây có CÙNG cache key và cùng dùng một bản cache.
+    - name: "Đo 2 — thêm utm_source, PHẢI vẫn là Hit"
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/index.html?utm_source={{ item }}"
+        return_content: false
+      register: utm
+      loop: [facebook, google, tiktok]
+      tags: [cache]
+
+    - name: Kết quả đo 2
+      ansible.builtin.debug:
+        msg:
+          - "utm_source=facebook → {{ utm.results[0]['x_cache'] | default('?') }}"
+          - "utm_source=google   → {{ utm.results[1]['x_cache'] | default('?') }}"
+          - "utm_source=tiktok   → {{ utm.results[2]['x_cache'] | default('?') }}"
+          - ""
+          - "Ba URL KHÁC NHAU nhưng cùng một bản cache, vì utm_source không nằm"
+          - "trong cache key. Nếu đưa TẤT CẢ query string vào cache key thì mỗi"
+          - "chiến dịch marketing sẽ tạo một bản cache riêng và tỉ lệ Hit sụp đổ."
+      tags: [cache]
+
+    # Bài đo 3: tham số CÓ trong cache key thì tách bản cache.
+    - name: "Đo 3 — tham số 'trang' CÓ trong cache key nên tách bản cache"
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/index.html?trang={{ item }}"
+        return_content: false
+      register: trang
+      loop: [1, 2]
+      tags: [cache]
+
+    - name: Kết quả đo 3
+      ansible.builtin.debug:
+        msg:
+          - "trang=1 → {{ trang.results[0]['x_cache'] | default('?') }}  (Miss: cache key mới)"
+          - "trang=2 → {{ trang.results[1]['x_cache'] | default('?') }}  (Miss: lại một cache key mới)"
+      tags: [cache]
+
+    # Bài đo 4: /api/* không cache.
+    - name: "Đo 4 — /api/* luôn Miss"
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/api/gio.json"
+        return_content: false
+      register: api
+      loop: [1, 2, 3]
+      tags: [cache]
+
+    - name: Kết quả đo 4
+      ansible.builtin.debug:
+        msg: >-
+          /api/* ba lần liên tiếp:
+          {{ api.results | map(attribute='x_cache') | list }}
+          — không bao giờ Hit vì dùng Managed-CachingDisabled.
+          Đường dẫn API mà cache thì người dùng nhận dữ liệu cũ.
+      tags: [cache]
+
+    # ================================================================ HEADER
+    - name: "Security header do CloudFront Function chèn"
+      ansible.builtin.uri:
+        url: "{{ tf.cloudfront_url }}/index.html"
+      register: hdr
+      tags: [cache]
+
+    - name: Kiểm tra đủ 4 header
+      ansible.builtin.assert:
+        that:
+          - hdr.strict_transport_security is defined
+          - hdr.x_content_type_options is defined
+          - hdr.x_frame_options is defined
+          - hdr.referrer_policy is defined
+        success_msg: >-
+          Đủ 4 security header. Chúng được chèn ở EDGE bởi CloudFront Function,
+          không phải bởi S3 — S3 không biết gì về chúng.
+        fail_msg: "Thiếu header. CloudFront Function có thể chưa deploy xong."
+      tags: [cache]
+
+    # ============================================================ INVALIDATE
+    - name: Cập nhật nội dung rồi invalidate
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          echo '{"cap_nhat":"'$(date -Iseconds)'"}' |
+          aws s3 cp - s3://{{ tf.bucket_name }}/api/gio.json
+            --profile {{ aws_profile }} --content-type application/json &&
+          aws cloudfront create-invalidation
+            --profile {{ aws_profile }}
+            --distribution-id {{ tf.distribution_id }}
+            --paths '/index.html' '/api/*'
+            --query 'Invalidation.Id' --output text
+        executable: /bin/bash
+      register: inval
+      changed_when: true
+      tags: [invalidate]
+
+    - name: Nhắc về chi phí invalidation
+      ansible.builtin.debug:
+        msg:
+          - "Invalidation {{ inval.stdout_lines | last | trim }} đang chạy (1-3 phút)."
+          - ""
+          - "Hạn mức: 1000 path/tháng miễn phí, sau đó $0,005/path."
+          - "Lưu ý '/api/*' tính là MỘT path, không phải mỗi file một path."
+          - ""
+          - "Cách MIỄN PHÍ và tốt hơn cho /static/*: đặt tên file có hash."
+          - "  app.js → app.a3f9c2.js"
+          - "URL mới thì không có cache cũ để mà xoá. Đó là lý do behavior"
+          - "/static/* được đặt TTL 1 năm."
+      tags: [invalidate]
+
+    # ================================================================ ROUTE53
+    - name: Trạng thái Route 53
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Hosted zone ĐANG BẬT (' ~ tf.hosted_zone_id ~ ') — $0,50/tháng + health check $0,50/tháng. XOÁ SAU 2 NGÀY: terraform apply -var enable_route53=false'
+             if tf.hosted_zone_id else
+             'Route 53 đang tắt (tốt, tiết kiệm $1/tháng). Routing policy học bằng bảng trong README là đủ để thi.' }}
+      tags: [route53, always]
+
+    - name: Liệt kê record và routing policy
+      ansible.builtin.shell:
+        cmd: >-
+          aws route53 list-resource-record-sets
+          --profile {{ aws_profile }}
+          --hosted-zone-id {{ tf.hosted_zone_id }}
+          --query 'ResourceRecordSets[?SetIdentifier].[Name,Type,SetIdentifier,Weight,Failover]'
+          --output text 2>/dev/null || echo "(khong doc duoc)"
+        executable: /bin/bash
+      register: rrs
+      changed_when: false
+      when: tf.hosted_zone_id is truthy
+      tags: [route53]
+
+    - name: Record đang có
+      ansible.builtin.debug:
+        msg: "{{ rrs.stdout_lines | default(['(khong co)']) }}"
+      when: tf.hosted_zone_id is truthy
+      tags: [route53]

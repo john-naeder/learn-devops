@@ -1,0 +1,15 @@
+---
+# Vào máy qua SSM, không SSH key — giống tuần 2.
+# Khác biệt: ở đây máy CÓ public IP (để user data cài được nginx), nhưng ta vẫn
+# không mở port 22 cho ai. SSH đơn giản là không tồn tại trong lab này.
+ansible_connection: amazon.aws.aws_ssm
+ansible_aws_ssm_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+ansible_aws_ssm_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+
+ansible_aws_ssm_bucket_name: >-
+  {{ ssm_bucket | default(lookup('pipe',
+     'terraform -chdir=' ~ playbook_dir ~ '/../terraform output -raw transfer_bucket'), true) }}
+
+ansible_python_interpreter: /usr/bin/python3
+ansible_become: true
+ansible_become_method: ansible.builtin.sudo

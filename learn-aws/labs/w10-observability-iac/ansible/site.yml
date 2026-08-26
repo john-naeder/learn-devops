@@ -1,0 +1,245 @@
+---
+# ===========================================================================
+# TUẦN 10 — Ansible GÂY SỰ CỐ để bạn nhận được email cảnh báo THẬT
+#
+# Đọc tài liệu về CloudWatch Alarm thì ai cũng hiểu. Nhưng cho tới khi điện
+# thoại bạn rung vì một alarm mình tự đặt, nó vẫn chỉ là lý thuyết.
+#
+# Chạy:
+#   ansible-playbook site.yml                  # gây lỗi + chậm, đợi alarm
+#   ansible-playbook site.yml --tags loi
+#   ansible-playbook site.yml --tags cham
+#   ansible-playbook site.yml --tags insights  # query Logs Insights
+# ===========================================================================
+
+- name: "Tuần 10 — gây sự cố có kiểm soát và quan sát hệ thống phản ứng"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    # Kiểm tra điều kiện tiên quyết quan trọng nhất.
+    - name: Kiểm tra đăng ký email
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sns
+          - list-subscriptions-by-topic
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--topic-arn={{ tf.sns_topic_arn }}"
+          - "--query=Subscriptions[].[Protocol,Endpoint,SubscriptionArn]"
+          - --output=text
+      register: subs
+      changed_when: false
+
+    - name: Cảnh báo nếu chưa xác nhận email
+      ansible.builtin.debug:
+        msg:
+          - "{{ subs.stdout_lines | default(['(chưa có subscription nào)']) }}"
+          - ""
+          - "{{ 'CHƯA XÁC NHẬN EMAIL — bạn sẽ KHÔNG nhận được cảnh báo nào.'
+                if 'PendingConfirmation' in subs.stdout else 'Email đã xác nhận.' }}"
+          - ""
+          - "{{ 'Vào hộp thư tìm mail từ AWS Notifications và bấm Confirm subscription.'
+                if 'PendingConfirmation' in subs.stdout else '' }}"
+          - "{{ 'Chưa đặt email? Chạy: terraform apply -var email_canh_bao=ban@example.com'
+                if subs.stdout | trim == '' else '' }}"
+
+    # =================================================================== LỖI
+    - name: "Ghi lại trạng thái alarm TRƯỚC khi gây lỗi"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - cloudwatch
+          - describe-alarms
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--alarm-names={{ tf.alarm_loi }}"
+          - "--query=MetricAlarms[0].StateValue"
+          - --output=text
+      register: truoc
+      changed_when: false
+      tags: [loi]
+
+    - name: "Gọi Lambda 5 lần với gay_loi=true"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - invoke
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_name }}"
+          - '--payload={"gay_loi": true, "nguoi_dung": "ansible"}'
+          - --cli-binary-format=raw-in-base64-out
+          - "/tmp/w10-loi-{{ item }}.json"
+      loop: "{{ range(5) | list }}"
+      changed_when: true
+      failed_when: false
+      tags: [loi]
+
+    - name: Đợi CloudWatch thu thập metric và đánh giá alarm
+      ansible.builtin.pause:
+        seconds: 120
+        prompt: >-
+          Metric Lambda mất ~1 phút để tới CloudWatch, alarm đánh giá theo chu kỳ
+          60 giây. Trong lúc chờ, mở dashboard xem đồ thị nhích lên
+      tags: [loi]
+
+    - name: "Trạng thái alarm SAU khi gây lỗi"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - cloudwatch
+          - describe-alarms
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--alarm-names={{ tf.alarm_loi }}"
+          - "--query=MetricAlarms[0].[StateValue,StateReason]"
+          - --output=text
+      register: sau
+      changed_when: false
+      tags: [loi]
+
+    - name: Alarm đã đổi trạng thái
+      ansible.builtin.debug:
+        msg:
+          - "Trước: {{ truoc.stdout | trim }}"
+          - "Sau  : {{ sau.stdout | trim }}"
+          - ""
+          - "{{ 'KIỂM TRA HỘP THƯ NGAY — email cảnh báo đã được gửi.'
+                if 'ALARM' in sau.stdout else
+                'Chưa vào ALARM. Đợi thêm 1-2 phút rồi chạy lại --tags loi.' }}"
+      tags: [loi]
+
+    # ================================================================== CHẬM
+    - name: "Gọi Lambda chậm để đẩy p99 lên"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - invoke
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_name }}"
+          - '--payload={"cham_ms": 3500, "nguoi_dung": "cham"}'
+          - --cli-binary-format=raw-in-base64-out
+          - "/tmp/w10-cham-{{ item }}.json"
+      loop: "{{ range(3) | list }}"
+      changed_when: true
+      tags: [cham]
+
+    - name: "Gọi thêm nhiều lần NHANH — để thấy trung bình che giấu đuôi"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - invoke
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_name }}"
+          - '--payload={"nguoi_dung": "nhanh"}'
+          - --cli-binary-format=raw-in-base64-out
+          - "/tmp/w10-nhanh-{{ item }}.json"
+      loop: "{{ range(20) | list }}"
+      changed_when: true
+      tags: [cham]
+
+    - name: Vì sao dùng p99 chứ không dùng trung bình
+      ansible.builtin.debug:
+        msg:
+          - "Vừa gọi 3 lần chậm (3,5 giây) và 20 lần nhanh (~1 ms)."
+          - ""
+          - "Trung bình ≈ (3 x 3500 + 20 x 1) / 23 ≈ 457 ms  → trông chấp nhận được"
+          - "p99        ≈ 3500 ms                              → phản ánh đúng sự thật"
+          - ""
+          - "Trung bình CHE GIẤU đuôi phân phối. 13% người dùng vừa đợi 3,5 giây,"
+          - "mà con số trung bình không hề cho bạn biết điều đó."
+          - ""
+          - "Mở dashboard so sánh bốn đường trung bình / p50 / p99 / tệ nhất:"
+          - "  {{ tf.dashboard_url }}"
+      tags: [cham]
+
+    # ============================================================== INSIGHTS
+    - name: "Chạy query Logs Insights tìm request chậm nhất"
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ID=$(aws logs start-query \
+            --profile {{ aws_profile }} --region {{ aws_region }} \
+            --log-group-name '{{ tf.log_group }}' \
+            --start-time $(( $(date +%s) - 3600 )) \
+            --end-time $(date +%s) \
+            --query-string 'fields @timestamp, nguoi_dung, thoi_gian_ms, request_id
+                            | filter ispresent(thoi_gian_ms)
+                            | sort thoi_gian_ms desc
+                            | limit 10' \
+            --query 'queryId' --output text)
+
+          # Query chạy bất đồng bộ — phải hỏi lại cho tới khi status = Complete.
+          OUT=$(mktemp)
+          for _ in $(seq 20); do
+            aws logs get-query-results --profile {{ aws_profile }} \
+              --region {{ aws_region }} --query-id "$ID" --output json > "$OUT"
+            grep -q '"status": "Complete"' "$OUT" && break
+            sleep 3
+          done
+
+          # Định dạng kết quả bằng heredoc để không phải escape lồng nhau
+          # (biến KQ_FILE truyền qua môi trường, không nhúng vào mã Python).
+          KQ_FILE="$OUT" python3 - <<'PY'
+          import json, os
+
+          with open(os.environ["KQ_FILE"], encoding="utf-8") as f:
+              d = json.load(f)
+
+          print("Trang thai:", d.get("status"))
+          for hang in d.get("results", []):
+              cot = [c for c in hang if not c["field"].startswith("@ptr")]
+              print("  " + "  ".join(c["field"] + "=" + c["value"] for c in cot))
+          PY
+          rm -f "$OUT"
+        executable: /bin/bash
+      register: insights
+      changed_when: false
+      tags: [insights]
+
+    - name: Kết quả Logs Insights
+      ansible.builtin.debug:
+        msg:
+          - "{{ insights.stdout_lines | default(['(chưa có dữ liệu)']) }}"
+          - ""
+          - "Query này chạy được vì ứng dụng in log dạng JSON CÓ CẤU TRÚC."
+          - "Logs Insights tự parse JSON, nên `filter thoi_gian_ms > 1000` hoạt động"
+          - "mà không cần một biểu thức chính quy nào."
+          - ""
+          - "Nếu log là chuỗi tự do kiểu 'Xu ly xong trong 1234ms' thì phải parse"
+          - "bằng regex — chậm hơn, đắt hơn, và vỡ ngay khi ai đó đổi câu chữ."
+      tags: [insights]
+
+    - name: Dọn file tạm
+      ansible.builtin.shell:
+        cmd: rm -f /tmp/w10-*.json
+      changed_when: false
+      tags: [always]

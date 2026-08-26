@@ -1,0 +1,83 @@
+---
+# ===========================================================================
+# KHOẢNH KHẮC ĐÁNG GIÁ NHẤT CỦA TUẦN 3
+#
+# Làm hỏng health check trên ĐÚNG MỘT máy, rồi ngồi xem:
+#   1. ALB phát hiện sau ~20 giây (interval 10s x unhealthy_threshold 2)
+#   2. ALB ngừng gửi traffic tới máy đó — người dùng không thấy lỗi
+#   3. ASG (health_check_type = "ELB") kết luận máy hỏng và TERMINATE nó
+#   4. ASG launch máy mới để giữ đủ desired_capacity
+#
+# Điểm tinh tế: máy vẫn đang CHẠY BÌNH THƯỜNG, EC2 status check vẫn xanh.
+# Chỉ có ứng dụng là hỏng. Nếu ASG dùng health_check_type = "EC2" (mặc định)
+# thì nó sẽ KHÔNG BAO GIỜ thay máy này — người dùng cứ thế gặp lỗi mãi.
+# Đó chính là câu hỏi thi.
+#
+# Chạy:
+#   ansible-playbook chaos.yml              # phá 1 máy
+#   ansible-playbook chaos.yml -e khoi_phuc=true   # sửa lại ngay, không đợi ASG
+# ===========================================================================
+
+- name: "Gây sự cố có kiểm soát trên một máy"
+  hosts: aws_ec2
+  gather_facts: false
+
+  # Chỉ tác động lên MỘT máy đầu tiên. Phá hết thì không còn gì phục vụ và
+  # bạn không quan sát được hành vi của load balancer.
+  run_once: true
+
+  vars:
+    khoi_phuc: false
+
+  tasks:
+
+    - name: "KHÔI PHỤC — trả lại endpoint health"
+      when: khoi_phuc | bool
+      block:
+        - name: Ghi lại /health
+          ansible.builtin.copy:
+            dest: /usr/share/nginx/html/health
+            content: "ok\n"
+            mode: "0644"
+
+        - name: Đã khôi phục
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }} đã trả 200 trở lại. ALB sẽ đưa máy này
+              về trạng thái healthy sau ~20 giây (healthy_threshold 2 x 10s).
+
+    - name: "PHÁ — làm /health trả 500"
+      when: not (khoi_phuc | bool)
+      block:
+        # Xoá file để nginx trả 404. Target group chỉ chấp nhận matcher "200",
+        # nên 404 cũng bị coi là fail.
+        - name: Xoá endpoint health check
+          ansible.builtin.file:
+            path: /usr/share/nginx/html/health
+            state: absent
+
+        - name: Xác nhận /health đã hỏng nhưng nginx vẫn sống
+          ansible.builtin.uri:
+            url: http://localhost/health
+            status_code: [404, 500]
+          register: da_hong
+
+        - name: Xác nhận trang chính VẪN chạy
+          ansible.builtin.uri:
+            url: http://localhost/
+            status_code: 200
+
+        - name: Việc cần làm ngay bây giờ
+          ansible.builtin.debug:
+            msg:
+              - "Đã phá health check trên {{ inventory_hostname }}."
+              - "Máy vẫn chạy, nginx vẫn chạy, trang chủ vẫn trả 200."
+              - "Chỉ /health là hỏng — đúng kiểu 'ứng dụng lỗi nhưng máy khoẻ'."
+              - ""
+              - "MỞ NGAY và theo dõi trong 3-5 phút:"
+              - "  watch -n5 '../verify.sh'"
+              - "hoặc xem trực tiếp trạng thái target:"
+              - "  aws elbv2 describe-target-health --target-group-arn $(terraform -chdir=../terraform output -raw target_group_arn) --output table"
+              - ""
+              - "Bạn sẽ thấy tuần tự: healthy → unhealthy → máy bị terminate → máy mới xuất hiện."
+              - "Muốn dừng thí nghiệm sớm: ansible-playbook chaos.yml -e khoi_phuc=true"

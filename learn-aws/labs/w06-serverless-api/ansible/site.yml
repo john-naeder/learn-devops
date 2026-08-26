@@ -1,0 +1,254 @@
+---
+# ===========================================================================
+# TUẦN 6 — Ansible kiểm thử API và ĐO cold start
+#
+# Terraform deploy hạ tầng. Ansible đóng vai trò của một bộ test tích hợp và
+# một công cụ đo — đúng việc mà một kỹ sư vận hành làm sau mỗi lần deploy.
+#
+# Chạy:
+#   ansible-playbook site.yml                    # test CRUD + đo cold start
+#   ansible-playbook site.yml --tags crud
+#   ansible-playbook site.yml --tags coldstart   # cần ~2 phút
+#   ansible-playbook site.yml --tags throttle
+# ===========================================================================
+
+- name: "Tuần 6 — kiểm thử API ghi chú"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+    nguoi_dung: nam
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    - name: API endpoint
+      ansible.builtin.debug:
+        msg: "{{ tf.api_url }}"
+
+    # ==================================================================== CRUD
+    - name: "Health check"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/health"
+        return_content: true
+      register: health
+      retries: 6
+      delay: 5
+      until: health.status is defined and health.status == 200
+      tags: [crud]
+
+    - name: Kết quả health
+      ansible.builtin.debug:
+        msg: "{{ health.json }}"
+      tags: [crud]
+
+    - name: "TẠO — POST /ghichu"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu"
+        method: POST
+        headers:
+          content-type: application/json
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        body_format: json
+        body:
+          noi_dung: "Ghi chú tạo bởi Ansible lúc {{ '%Y-%m-%d %H:%M:%S' | strftime }}"
+        status_code: 201
+      register: tao
+      tags: [crud]
+
+    - name: Ghi chú vừa tạo
+      ansible.builtin.debug:
+        msg: "id={{ tao.json.id }}  noi_dung={{ tao.json.noi_dung }}"
+      tags: [crud]
+
+    - name: "ĐỌC — GET /ghichu/{id}"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu/{{ tao.json.id }}"
+        headers:
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        return_content: true
+      register: doc
+      tags: [crud]
+
+    - name: "SỬA — PUT /ghichu/{id}"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu/{{ tao.json.id }}"
+        method: PUT
+        headers:
+          content-type: application/json
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        body_format: json
+        body:
+          noi_dung: "Nội dung đã được sửa"
+      register: sua
+      tags: [crud]
+
+    - name: "LIỆT KÊ — GET /ghichu"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu"
+        headers:
+          x-nguoi-dung: "{{ nguoi_dung }}"
+      register: ds
+      tags: [crud]
+
+    # Bài học cách ly dữ liệu: cùng một API, header khác → dữ liệu khác.
+    # Vì partition key là NGUOIDUNG#<ten>, mỗi người chỉ Query được phần của mình.
+    - name: "CÁCH LY — người dùng khác phải thấy danh sách riêng"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu"
+        headers:
+          x-nguoi-dung: nguoi-khac
+      register: ds_khac
+      tags: [crud]
+
+    - name: "SỬA thứ không tồn tại — phải trả 404, KHÔNG được tạo mới"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu/khong-ton-tai-dau"
+        method: PUT
+        headers:
+          content-type: application/json
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        body_format: json
+        body:
+          noi_dung: "thu sua"
+        status_code: 404
+      register: sua_sai
+      tags: [crud]
+
+    - name: "XOÁ — DELETE /ghichu/{id}"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu/{{ tao.json.id }}"
+        method: DELETE
+        headers:
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        status_code: 204
+      tags: [crud]
+
+    - name: "Đọc lại sau khi xoá — phải 404"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/ghichu/{{ tao.json.id }}"
+        headers:
+          x-nguoi-dung: "{{ nguoi_dung }}"
+        status_code: 404
+      tags: [crud]
+
+    - name: Tổng kết CRUD
+      ansible.builtin.assert:
+        that:
+          - health.json.trang_thai == "ok"
+          - tao.json.id is defined
+          - doc.json.id == tao.json.id
+          - sua.json.noi_dung == "Nội dung đã được sửa"
+          - ds.json.so_luong >= 1
+          - ds_khac.json.so_luong == 0
+          - sua_sai.status == 404
+        success_msg: >-
+          Cả 5 thao tác CRUD đều đúng, và dữ liệu giữa hai người dùng được
+          cách ly hoàn toàn nhờ thiết kế partition key.
+        fail_msg: "Có bước sai — xem log ở {{ tf.lambda_log_group }}"
+      tags: [crud]
+
+    # =============================================================== COLD START
+    #
+    # Cold start là gì: khi không có execution context nào rảnh, Lambda phải
+    # tạo môi trường mới — tải mã, khởi động runtime Python, chạy phần khởi tạo
+    # ở phạm vi module (dòng `TABLE = boto3...` trong handler.py).
+    #
+    # Đây là lý do dòng đó phải nằm NGOÀI handler: nó chỉ chạy một lần mỗi
+    # cold start, thay vì mỗi request.
+
+    - name: Ép cold start bằng cách cập nhật cấu hình hàm
+      # Mọi thay đổi cấu hình đều huỷ toàn bộ execution context đang có.
+      # Đây là cách đáng tin cậy nhất để tạo cold start theo ý muốn.
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - update-function-configuration
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_name }}"
+          - "--description=ep cold start {{ 999999 | random }}"
+      changed_when: true
+      tags: [coldstart]
+
+    - name: Đợi cập nhật hoàn tất
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - wait
+          - function-updated-v2
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_name }}"
+      changed_when: false
+      tags: [coldstart]
+
+    - name: Gọi lần đầu (LẠNH) rồi 9 lần sau (ẤM)
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/health"
+        return_content: false
+      register: do_thoi_gian
+      loop: "{{ range(10) | list }}"
+      tags: [coldstart]
+
+    - name: So sánh lạnh với ấm
+      ansible.builtin.debug:
+        msg:
+          - "Lần 1 (lạnh) : {{ (thoi_gian[0] * 1000) | round(1) }} ms"
+          - "Trung bình 9 lần sau (ấm): {{ ((thoi_gian[1:] | sum / 9) * 1000) | round(1) }} ms"
+          - "Chênh lệch  : {{ ((thoi_gian[0] - (thoi_gian[1:] | sum / 9)) * 1000) | round(1) }} ms"
+          - ""
+          - "Cách giảm cold start, theo thứ tự nên thử:"
+          - "  1. Gói triển khai nhỏ — ít thư viện thì tải nhanh hơn"
+          - "  2. Khởi tạo client NGOÀI handler (đã làm trong handler.py)"
+          - "  3. Tăng memory — CPU tăng theo, khởi động nhanh hơn"
+          - "  4. Provisioned concurrency — hết cold start hẳn, NHƯNG TỐN TIỀN"
+          - "     kể cả khi không ai gọi. Không dùng trong lab."
+          - "  5. KHÔNG đặt Lambda vào VPC nếu không thực sự cần"
+      vars:
+        thoi_gian: "{{ do_thoi_gian.results | map(attribute='elapsed') | list }}"
+      tags: [coldstart]
+
+    # ================================================================ THROTTLE
+    - name: "Bắn 60 request nhanh để chạm giới hạn throttling"
+      ansible.builtin.uri:
+        url: "{{ tf.api_url }}/health"
+        status_code: [200, 429]
+      register: bao
+      loop: "{{ range(60) | list }}"
+      tags: [throttle]
+
+    - name: Kết quả throttling
+      ansible.builtin.debug:
+        msg:
+          - "200 OK          : {{ ma | select('equalto', 200) | list | length }}"
+          - "429 Too Many    : {{ ma | select('equalto', 429) | list | length }}"
+          - ""
+          - "Throttling là HÀNG RÀO CHI PHÍ, không phải phiền toái."
+          - "Không có nó, một vòng lặp lỗi có thể ăn sạch 1 triệu request"
+          - "miễn phí trong vài phút, rồi bắt đầu tính tiền thật."
+          - ""
+          - "429 nghĩa là API Gateway đã chặn TRƯỚC KHI gọi Lambda —"
+          - "bạn không trả tiền cho những request bị chặn."
+      vars:
+        ma: "{{ bao.results | map(attribute='status') | list }}"
+      tags: [throttle]

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>{{ inventory_hostname }}</title>
+<body style="font-family:system-ui,sans-serif;max-width:44rem;margin:3rem auto;line-height:1.7;padding:0 1rem">
+
+<h1 style="font-family:ui-monospace,monospace">{{ inventory_hostname }}</h1>
+
+<table style="border-collapse:collapse;width:100%">
+  <tr><td style="padding:.4rem 0;color:#666">Availability Zone</td>
+      <td style="padding:.4rem 0"><b>{{ ansible_ec2_placement_availability_zone | default('?') }}</b></td></tr>
+  <tr><td style="padding:.4rem 0;color:#666">IP riêng</td>
+      <td style="padding:.4rem 0">{{ ansible_default_ipv4.address }}</td></tr>
+  <tr><td style="padding:.4rem 0;color:#666">Loại máy</td>
+      <td style="padding:.4rem 0">{{ ansible_ec2_instance_type | default(ansible_processor_vcpus ~ ' vCPU') }}</td></tr>
+  <tr><td style="padding:.4rem 0;color:#666">Hệ điều hành</td>
+      <td style="padding:.4rem 0">{{ ansible_distribution }} {{ ansible_distribution_version }}</td></tr>
+  <tr><td style="padding:.4rem 0;color:#666">Cấu hình bởi</td>
+      <td style="padding:.4rem 0"><b>Ansible</b> lúc {{ ansible_date_time.iso8601 }}</td></tr>
+  <tr><td style="padding:.4rem 0;color:#666">Phiên bản trang</td>
+      <td style="padding:.4rem 0">{{ app_version }}</td></tr>
+</table>
+
+<p style="margin-top:2rem;padding:1rem;background:#f4f6f3;border-left:3px solid #0F5257">
+Trang này do <b>Ansible</b> ghi đè, thay cho bản mà <b>user data</b> tạo lúc boot.
+Khác biệt quan trọng: user data chỉ chạy <b>một lần</b> lúc máy sinh ra, còn Ansible
+chạy lại được <b>bất cứ lúc nào</b> mà không cần thay máy.
+</p>
+
+<p style="color:#666">Refresh liên tục để thấy ALB luân phiên đổi máy phục vụ.</p>
+
+</body>

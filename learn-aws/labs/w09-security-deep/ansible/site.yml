@@ -1,0 +1,262 @@
+---
+# ===========================================================================
+# TUẦN 9 — Ansible CHỨNG MINH bằng thực nghiệm, không chỉ mô tả
+#
+# Bốn thí nghiệm, mỗi cái trả lời một câu hỏi thi:
+#   1. AssumeRole không có external ID → thất bại
+#   2. Role có AdministratorAccess nhưng boundary chặn → thất bại
+#   3. Explicit Deny thắng Allow rộng → thất bại
+#   4. Lambda đọc được SecureString mà secret không lộ ra log
+#
+# Chạy:
+#   ansible-playbook site.yml
+#   ansible-playbook site.yml --tags assume,boundary,deny,secret
+# ===========================================================================
+
+- name: "Tuần 9 — thí nghiệm về logic đánh giá quyền IAM"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    # ============================================ THÍ NGHIỆM 1: EXTERNAL ID
+    - name: "1a. AssumeRole KHÔNG có external ID — phải THẤT BẠI"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sts
+          - assume-role
+          - "--profile={{ aws_profile }}"
+          - "--role-arn={{ tf.role_ben_thu_ba_arn }}"
+          - --role-session-name=thu-khong-co-external-id
+      register: khong_id
+      changed_when: false
+      failed_when: false
+      tags: [assume]
+
+    - name: "1b. AssumeRole CÓ external ID — phải THÀNH CÔNG"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sts
+          - assume-role
+          - "--profile={{ aws_profile }}"
+          - "--role-arn={{ tf.role_ben_thu_ba_arn }}"
+          - --role-session-name=thu-co-external-id
+          - "--external-id={{ tf.external_id }}"
+          - "--query=AssumedRoleUser.Arn"
+          - --output=text
+      register: co_id
+      changed_when: false
+      failed_when: false
+      tags: [assume]
+
+    - name: Kết luận về external ID
+      ansible.builtin.assert:
+        that:
+          - khong_id.rc != 0
+          - co_id.rc == 0
+        success_msg: >-
+          Đúng như thiết kế. Không có external ID thì AccessDenied, kể cả khi
+          biết chính xác ARN của role. Đây là cách chống "confused deputy":
+          bên thứ ba phục vụ nhiều khách hàng không thể bị lừa assume nhầm
+          vào account của bạn.
+          Session thành công: {{ co_id.stdout | trim }}
+        fail_msg: >-
+          Kết quả không như mong đợi.
+          Không external ID rc={{ khong_id.rc }}, có external ID rc={{ co_id.rc }}
+      tags: [assume]
+
+    # ======================================= THÍ NGHIỆM 2: PERMISSION BOUNDARY
+    #
+    # Role này được gắn AdministratorAccess — quyền cao nhất tồn tại.
+    # Nhưng boundary chỉ cho phép s3:* và logs:*.
+    # Quyền thực tế = GIAO của hai thứ đó.
+
+    - name: "2. Mô phỏng quyền của role bị boundary giới hạn"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - simulate-principal-policy
+          - "--profile={{ aws_profile }}"
+          - "--policy-source-arn={{ tf.role_bi_gioi_han_arn }}"
+          - "--action-names={{ item }}"
+          - "--query=EvaluationResults[0].EvalDecision"
+          - --output=text
+      register: bnd
+      changed_when: false
+      loop:
+        - s3:ListAllMyBuckets # trong boundary  → allowed
+        - logs:DescribeLogGroups # trong boundary  → allowed
+        - iam:CreateUser # NGOÀI boundary → denied
+        - ec2:RunInstances # NGOÀI boundary → denied
+        - dynamodb:CreateTable # NGOÀI boundary → denied
+      tags: [boundary]
+
+    - name: Kết quả permission boundary
+      ansible.builtin.debug:
+        msg: >-
+          {{ '%-26s' | format(item.item) }} → {{ item.stdout | trim }}
+      loop: "{{ bnd.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      tags: [boundary]
+
+    - name: Kết luận về permission boundary
+      ansible.builtin.assert:
+        that:
+          - (bnd.results[0].stdout | trim) == "allowed"
+          - (bnd.results[1].stdout | trim) == "allowed"
+          - (bnd.results[2].stdout | trim) != "allowed"
+          - (bnd.results[3].stdout | trim) != "allowed"
+          - (bnd.results[4].stdout | trim) != "allowed"
+        success_msg: >-
+          Role này có AdministratorAccess mà vẫn KHÔNG tạo được IAM user,
+          KHÔNG khởi động được EC2. Boundary không cấp quyền — nó đặt TRẦN.
+          Quyền thực tế = GIAO của identity policy và boundary.
+          Ứng dụng thật: cho developer tự tạo role cho ứng dụng của họ mà
+          không sợ họ tự nâng mình lên admin.
+        fail_msg: "Boundary không chặn như mong đợi — xem lại aws_iam_policy.boundary"
+      tags: [boundary]
+
+    # ========================================= THÍ NGHIỆM 3: EXPLICIT DENY
+    - name: "3. Mô phỏng role có AdministratorAccess + explicit Deny"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - iam
+          - simulate-principal-policy
+          - "--profile={{ aws_profile }}"
+          - "--policy-source-arn={{ tf.role_admin_co_deny_arn }}"
+          - "--action-names={{ item }}"
+          - "--query=EvaluationResults[0].EvalDecision"
+          - --output=text
+      register: deny
+      changed_when: false
+      loop:
+        - s3:ListAllMyBuckets # admin cho phép        → allowed
+        - iam:CreateUser # admin cho phép        → allowed
+        - cloudtrail:StopLogging # BỊ DENY tường minh   → explicitDeny
+        - guardduty:DeleteDetector # BỊ DENY tường minh   → explicitDeny
+      tags: [deny]
+
+    - name: Kết quả explicit Deny
+      ansible.builtin.debug:
+        msg: >-
+          {{ '%-30s' | format(item.item) }} → {{ item.stdout | trim }}
+      loop: "{{ deny.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      tags: [deny]
+
+    - name: Kết luận về explicit Deny
+      ansible.builtin.assert:
+        that:
+          - (deny.results[0].stdout | trim) == "allowed"
+          - (deny.results[1].stdout | trim) == "allowed"
+          - (deny.results[2].stdout | trim) == "explicitDeny"
+          - (deny.results[3].stdout | trim) == "explicitDeny"
+        success_msg: >-
+          Đây là bằng chứng cho quy tắc quan trọng nhất của IAM:
+          EXPLICIT DENY THẮNG TẤT CẢ. Role có AdministratorAccess, tạo được
+          IAM user, nhưng KHÔNG tắt được CloudTrail.
+          Ứng dụng thật: chặn các hành động xoá dấu vết cho MỌI người kể cả
+          admin. Trong Organizations việc này làm bằng SCP.
+          Chú ý ba giá trị khác nhau: allowed / implicitDeny / explicitDeny.
+        fail_msg: "Kết quả không như mong đợi"
+      tags: [deny]
+
+    # ============================================= THÍ NGHIỆM 4: SECURESTRING
+    - name: "4a. Lambda đọc SecureString"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - lambda
+          - invoke
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--function-name={{ tf.lambda_doc_secret }}"
+          - --payload={}
+          - --cli-binary-format=raw-in-base64-out
+          - /tmp/w09-ketqua.json
+      register: goi
+      changed_when: false
+      tags: [secret]
+
+    - name: Đọc kết quả
+      ansible.builtin.command:
+        cmd: cat /tmp/w09-ketqua.json
+      register: kq
+      changed_when: false
+      tags: [secret]
+
+    - name: "4b. Đọc SecureString mà KHÔNG giải mã — thấy bản mã"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - ssm
+          - get-parameter
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--name={{ tf.secret_path }}"
+          - "--query=Parameter.Value"
+          - --output=text
+      register: chua_giai_ma
+      changed_when: false
+      tags: [secret]
+
+    - name: Kết quả về secret
+      ansible.builtin.debug:
+        msg:
+          - "Lambda trả về: {{ kq.stdout }}"
+          - ""
+          - "Đọc thẳng không --with-decryption: {{ chua_giai_ma.stdout[:40] }}..."
+          - "  → đó là bản mã, không phải giá trị thật."
+          - ""
+          - "Hai điểm đáng chú ý trong code Lambda:"
+          - "  1. KHÔNG in secret ra log. CloudWatch giữ log lại, ai đọc được"
+          - "     log là đọc được secret."
+          - "  2. Secret KHÔNG nằm trong biến môi trường. Biến môi trường hiện"
+          - "     NGUYÊN VĂN trong console và trong GetFunctionConfiguration."
+          - "     Chỉ TIỀN TỐ đường dẫn được để ở đó."
+          - ""
+          - "Chi phí: Parameter Store Standard MIỄN PHÍ."
+          - "Secrets Manager cùng việc này tốn $0,40/tháng — đổi lại được TỰ ĐỘNG"
+          - "XOAY VÒNG, thứ Parameter Store không có. Đó là khác biệt quyết định."
+      tags: [secret]
+
+    - name: Dọn file tạm
+      ansible.builtin.file:
+        path: /tmp/w09-ketqua.json
+        state: absent
+      tags: [secret]
+
+    # ===================================================== NHẮC GUARDDUTY
+    - name: Trạng thái GuardDuty
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'GuardDuty ĐANG BẬT (' ~ tf.guardduty_id ~ '). Xem finding mẫu rồi TẮT: terraform apply -var enable_guardduty=false'
+             if tf.guardduty_id else
+             'GuardDuty đang tắt (tốt). Bật khi muốn xem finding: terraform apply -var enable_guardduty=true' }}
+      tags: [always]

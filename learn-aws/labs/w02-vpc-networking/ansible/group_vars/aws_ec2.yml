@@ -1,0 +1,33 @@
+---
+# Cách Ansible nói chuyện với máy trong private subnet.
+#
+# KHÔNG dùng SSH. Không có SSH key, không có bastion, không có public IP,
+# security group không mở một port inbound nào. Vẫn điều khiển được máy.
+#
+# Cơ chế: connection plugin amazon.aws.aws_ssm gửi lệnh qua AWS Systems Manager.
+# SSM Agent chạy sẵn trên máy chủ động gọi RA endpoint (chiều outbound), nên
+# không cần mở gì cả. Đây vừa là cách rẻ nhất vừa là cách an toàn nhất, và là
+# đáp án đúng cho câu hỏi thi "truy cập instance private mà không mở SSH".
+
+ansible_connection: amazon.aws.aws_ssm
+ansible_aws_ssm_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+ansible_aws_ssm_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+
+# Plugin cần một bucket S3 làm kênh chuyển file hai chiều (nó không stream trực
+# tiếp được). Bucket này do Terraform tạo; traffic tới nó đi qua S3 Gateway
+# Endpoint nên không cần internet và không tốn tiền data transfer.
+#
+# Tên bucket đọc thẳng từ Terraform state. Phải dùng lookup chứ không dùng
+# set_fact: biến kết nối được đánh giá NGAY khi Ansible mở kết nối tới máy,
+# tức là trước cả task đầu tiên — lúc đó set_fact chưa kịp chạy.
+# Muốn ghi đè thì: ansible-playbook site.yml -e ssm_bucket=ten-bucket-khac
+ansible_aws_ssm_bucket_name: >-
+  {{ ssm_bucket | default(lookup('pipe',
+     'terraform -chdir=' ~ playbook_dir ~ '/../terraform output -raw bucket_name'), true) }}
+
+# AL2023 dùng python3 sẵn có.
+ansible_python_interpreter: /usr/bin/python3
+
+# Chạy lệnh bằng root cho tiện; SSM đăng nhập vào bằng user ssm-user.
+ansible_become: true
+ansible_become_method: ansible.builtin.sudo

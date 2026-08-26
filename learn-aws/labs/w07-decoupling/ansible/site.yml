@@ -1,0 +1,241 @@
+---
+# ===========================================================================
+# TUẦN 7 — Ansible bơm sự kiện vào hệ thống và quan sát nó tự chảy
+#
+# Chạy:
+#   ansible-playbook site.yml                 # fanout + filter policy
+#   ansible-playbook site.yml --tags fanout
+#   ansible-playbook site.yml --tags dlq      # cần bật gay_loi_don_hang trước
+#   ansible-playbook site.yml --tags sfn      # chạy Step Functions
+# ===========================================================================
+
+- name: "Tuần 7 — quan sát hệ thống tách rời"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    - name: Trạng thái lab
+      ansible.builtin.debug:
+        msg:
+          - "Chế độ gây lỗi : {{ tf.che_do_gay_loi }}"
+          - "Lịch định kỳ   : {{ 'ĐANG BẬT — nhớ tắt!' if tf.lich_dang_bat else 'tắt (tốt)' }}"
+
+    # =================================================================== FANOUT
+    #
+    # Ý chính: publish vào MỘT topic, nhiều hàng đợi nhận. Producer không hề
+    # biết có bao nhiêu consumer. Thêm consumer mới = thêm subscription,
+    # KHÔNG sửa một dòng nào ở producer.
+
+    - name: Dọn sạch hai hàng đợi trước khi đo
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sqs
+          - purge-queue
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--queue-url={{ item }}"
+      loop:
+        - "{{ tf.queue_don_hang_url }}"
+        - "{{ tf.queue_kho_hang_url }}"
+      changed_when: true
+      failed_when: false
+      tags: [fanout]
+
+    - name: "Publish 3 sự kiện loại don-hang"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sns
+          - publish
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--topic-arn={{ tf.sns_topic_arn }}"
+          - "--message={{ 'Don hang so ' ~ item }}"
+          - >-
+            --message-attributes={"loai_su_kien":{"DataType":"String","StringValue":"don-hang"}}
+          - --output=text
+      loop: [1, 2, 3]
+      changed_when: true
+      tags: [fanout]
+
+    - name: "Publish 2 sự kiện loại nhap-kho"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sns
+          - publish
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--topic-arn={{ tf.sns_topic_arn }}"
+          - "--message={{ 'Nhap kho lo ' ~ item }}"
+          - >-
+            --message-attributes={"loai_su_kien":{"DataType":"String","StringValue":"nhap-kho"}}
+          - --output=text
+      loop: [1, 2]
+      changed_when: true
+      tags: [fanout]
+
+    - name: Đợi Lambda tiêu thụ
+      ansible.builtin.pause:
+        seconds: 25
+      tags: [fanout]
+
+    - name: Đọc log Lambda đơn hàng
+      ansible.builtin.shell:
+        cmd: >-
+          aws logs tail {{ tf.log_group_don_hang }} --profile {{ aws_profile }}
+          --region {{ aws_region }} --since 3m --format short 2>/dev/null | tail -20
+          || echo "(chua co log)"
+        executable: /bin/bash
+      register: log_don
+      changed_when: false
+      tags: [fanout]
+
+    - name: Đọc log Lambda kho hàng
+      ansible.builtin.shell:
+        cmd: >-
+          aws logs tail {{ tf.log_group_kho_hang }} --profile {{ aws_profile }}
+          --region {{ aws_region }} --since 3m --format short 2>/dev/null | tail -20
+          || echo "(chua co log)"
+        executable: /bin/bash
+      register: log_kho
+      changed_when: false
+      tags: [fanout]
+
+    - name: Kết quả fanout và filter policy
+      ansible.builtin.debug:
+        msg:
+          - "─── Lambda ĐƠN HÀNG (filter: chỉ don-hang) ───"
+          - "{{ log_don.stdout_lines | default([]) }}"
+          - ""
+          - "─── Lambda KHO HÀNG (filter: don-hang + nhap-kho) ───"
+          - "{{ log_kho.stdout_lines | default([]) }}"
+          - ""
+          - "Đã publish 3 don-hang + 2 nhap-kho vào CÙNG một topic."
+          - "Hàng đợi đơn hàng lẽ ra nhận 3, hàng đợi kho nhận 5."
+          - ""
+          - "Việc lọc diễn ra Ở SNS, TRƯỚC khi gửi — nên bạn không trả tiền"
+          - "cho message không liên quan, và consumer không phải viết code lọc."
+      tags: [fanout]
+
+    # ====================================================================== DLQ
+    - name: Kiểm tra chế độ gây lỗi
+      ansible.builtin.debug:
+        msg: >-
+          DLQ chỉ có message khi Lambda thất bại. Bật chế độ gây lỗi trước:
+          cd ../terraform && terraform apply -var gay_loi_don_hang=true
+          rồi chạy lại: ansible-playbook site.yml --tags fanout,dlq
+      when: not (tf.che_do_gay_loi is search('ĐANG BẬT'))
+      tags: [dlq]
+
+    - name: Đợi cơ chế thử lại chạy hết 3 lần
+      ansible.builtin.pause:
+        seconds: 90
+        prompt: >-
+          Đợi 3 lần thử (mỗi lần cách nhau bằng visibility timeout 60s).
+          Message sẽ sang DLQ sau lần thứ 3.
+      when: tf.che_do_gay_loi is search('ĐANG BẬT')
+      tags: [dlq]
+
+    - name: Đếm message trong DLQ
+      ansible.builtin.command:
+        argv:
+          - aws
+          - sqs
+          - get-queue-attributes
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--queue-url={{ tf.dlq_url }}"
+          - --attribute-names=ApproximateNumberOfMessages
+          - "--query=Attributes.ApproximateNumberOfMessages"
+          - --output=text
+      register: dlq_count
+      changed_when: false
+      tags: [dlq]
+
+    - name: Nội dung DLQ
+      ansible.builtin.debug:
+        msg:
+          - "Số message trong DLQ: {{ dlq_count.stdout | trim }}"
+          - ""
+          - "DLQ giữ message 14 ngày để bạn điều tra. Quy trình thật:"
+          - "  1. Xem message hỏng, tìm nguyên nhân"
+          - "  2. Sửa code"
+          - "  3. Redrive message từ DLQ về hàng đợi chính (console có nút sẵn)"
+          - ""
+          - "Không có DLQ thì message lỗi quay vòng vô tận: tốn tiền, và nó"
+          - "chặn luôn những message tốt phía sau."
+      tags: [dlq]
+
+    # ========================================================== STEP FUNCTIONS
+    - name: Chạy state machine
+      ansible.builtin.command:
+        argv:
+          - aws
+          - stepfunctions
+          - start-execution
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--state-machine-arn={{ tf.state_machine_arn }}"
+          - '--input={"don_hang_id":"DH-001","so_luong":3}'
+          - "--query=executionArn"
+          - --output=text
+      register: exec
+      changed_when: true
+      tags: [sfn]
+
+    - name: Đợi quy trình chạy xong
+      ansible.builtin.command:
+        argv:
+          - aws
+          - stepfunctions
+          - describe-execution
+          - "--profile={{ aws_profile }}"
+          - "--region={{ aws_region }}"
+          - "--execution-arn={{ exec.stdout | trim }}"
+          - "--query=status"
+          - --output=text
+      register: tt
+      until: tt.stdout is defined and (tt.stdout | trim) != "RUNNING"
+      retries: 20
+      delay: 3
+      changed_when: false
+      tags: [sfn]
+
+    - name: Kết quả quy trình
+      ansible.builtin.debug:
+        msg:
+          - "Trạng thái: {{ tt.stdout | trim }}"
+          - ""
+          - "Mở console Step Functions để xem sơ đồ trực quan từng bước:"
+          - "  {{ exec.stdout | trim }}"
+          - ""
+          - "Ba thứ đáng chú ý trong định nghĩa quy trình:"
+          - "  Retry — xử lý lỗi TẠM THỜI (throttle, timeout), có backoff luỹ tiến"
+          - "  Catch — xử lý lỗi VĨNH VIỄN, rẽ nhánh thay vì làm sập cả quy trình"
+          - "  Wait  — chờ KHÔNG tốn tiền trong Standard workflow."
+          - "          Chờ 30 ngày cũng chỉ tính là một state transition."
+          - "          Nếu chờ bằng Lambda thì bạn trả tiền GB-giây cho thời gian ngủ."
+      tags: [sfn]

@@ -1,0 +1,220 @@
+---
+# ===========================================================================
+# TUẦN 2 — Ansible cấu hình một máy KHÔNG CÓ ĐƯỜNG RA INTERNET
+#
+# Đây là lab đầu tiên Ansible làm đúng vai của nó: config management trên EC2.
+# Nhưng máy này nằm trong private subnet không NAT, nên playbook cố tình được
+# thiết kế quanh ràng buộc đó — và chính ràng buộc đó là bài học.
+#
+# Chạy:
+#   ansible-inventory --graph          # xem AWS trả về máy nào
+#   ansible-playbook site.yml
+#   ansible-playbook site.yml --tags nacl   # chỉ sinh traffic cho flow logs
+# ===========================================================================
+
+- name: "Tuần 2 — kiểm chứng mạng từ bên trong private subnet"
+  hosts: aws_ec2
+  gather_facts: true
+
+  vars:
+    tf_dir: "{{ playbook_dir }}/../terraform"
+    bao_cao: /root/bao-cao-mang.txt
+
+  tasks:
+
+    - name: Đọc cấu hình từ Terraform
+      ansible.builtin.set_fact:
+        lab_bucket: "{{ lookup('pipe', 'terraform -chdir=' ~ tf_dir ~ ' output -raw bucket_name') }}"
+        port_bi_chan: "{{ lookup('pipe', 'terraform -chdir=' ~ tf_dir ~ ' output -raw blocked_port') }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Máy này là ai
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} | IP riêng {{ ansible_default_ipv4.address }} |
+          AZ {{ ansible_ec2_placement_availability_zone | default('?') }} |
+          public IP: {{ ansible_default_ipv4.address | ipaddr('public') | ternary('CÓ (sai!)', 'KHÔNG (đúng)') }}
+
+    # ================================================ BẰNG CHỨNG 1: KHÔNG INTERNET
+    # Máy phải KHÔNG ra được internet. Nếu ra được thì bạn đã lỡ bật NAT Gateway
+    # ở đâu đó và đang đốt $33/tháng.
+
+    - name: "Thử gọi internet — PHẢI thất bại"
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --max-time
+          - "8"
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - https://example.com
+      register: thu_internet
+      changed_when: false
+      failed_when: false
+
+    - name: Kết luận về đường ra internet
+      ansible.builtin.assert:
+        that:
+          - thu_internet.rc != 0 or thu_internet.stdout == "000"
+        fail_msg: >-
+          CẢNH BÁO: máy này RA ĐƯỢC internet (HTTP {{ thu_internet.stdout }}).
+          Private subnet lẽ ra không có đường ra. Kiểm tra xem có NAT Gateway
+          nào đang chạy không — mỗi cái ~$33/tháng.
+          Chạy: ../../scripts/find-orphans.sh
+        success_msg: >-
+          Đúng như thiết kế: không ra được internet, không có NAT Gateway,
+          không đốt tiền.
+
+    # ============================================ BẰNG CHỨNG 2: S3 GATEWAY ENDPOINT
+    # Không có internet, nhưng vẫn đọc được S3. Đường đi là Gateway Endpoint,
+    # miễn phí. ĐÂY LÀ Ý CHÍNH CỦA CẢ TUẦN.
+
+    - name: "Đọc file từ S3 — PHẢI thành công dù không có internet"
+      ansible.builtin.command:
+        argv:
+          - aws
+          - s3
+          - cp
+          - "s3://{{ lab_bucket }}/proof.txt"
+          - "-"
+      register: doc_s3
+      changed_when: false
+
+    - name: Nội dung đọc được từ S3
+      ansible.builtin.debug:
+        msg: "{{ doc_s3.stdout_lines }}"
+
+    - name: Khẳng định Gateway Endpoint hoạt động
+      ansible.builtin.assert:
+        that:
+          - doc_s3.rc == 0
+        success_msg: >-
+          S3 Gateway Endpoint hoạt động. Máy không có đường ra internet mà vẫn
+          tới được S3, và không tốn một xu data transfer nào.
+          → Đây chính là đáp án cho câu hỏi thi "private subnet gọi S3, chi phí thấp nhất".
+        fail_msg: >-
+          Không đọc được S3. Kiểm tra: (1) route table của private subnet đã có
+          prefix list của endpoint chưa, (2) IAM role có quyền GetObject chưa.
+
+    # =================================================== BẰNG CHỨNG 3: IMDSv2
+    # IMDSv1 cho lấy credential chỉ bằng một GET. Nếu app dính lỗ hổng SSRF thì
+    # kẻ tấn công đọc được credential của role. IMDSv2 bắt buộc lấy token bằng
+    # PUT trước, mà SSRF thì thường không gửi PUT được.
+
+    - name: "IMDSv1 (không token) — PHẢI bị từ chối"
+      ansible.builtin.shell:
+        cmd: curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://169.254.169.254/latest/meta-data/
+      register: imds_v1
+      changed_when: false
+      failed_when: false
+
+    - name: "IMDSv2 (có token) — PHẢI thành công"
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token
+                  -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' --max-time 5);
+          curl -s -H "X-aws-ec2-metadata-token: $TOKEN" --max-time 5
+               http://169.254.169.254/latest/meta-data/instance-id
+        executable: /bin/bash
+      register: imds_v2
+      changed_when: false
+
+    - name: Kết quả IMDS
+      ansible.builtin.assert:
+        that:
+          - imds_v1.stdout == "401"
+          - imds_v2.stdout == inventory_hostname
+        success_msg: >-
+          IMDSv2 đang được ép buộc. IMDSv1 trả 401, IMDSv2 trả
+          {{ imds_v2.stdout }}. Đây là cấu hình đúng và là câu hỏi hay ra thi.
+        fail_msg: >-
+          IMDSv1 trả {{ imds_v1.stdout }} thay vì 401 — metadata đang hở.
+          Kiểm tra metadata_options.http_tokens = "required" trong main.tf.
+
+    # ======================================== BẰNG CHỨNG 4: SG STATEFUL vs NACL
+    - name: "Gọi vào port bị NACL chặn — sinh bản ghi REJECT cho Flow Logs"
+      ansible.builtin.command:
+        argv:
+          - timeout
+          - "6"
+          - curl
+          - --silent
+          - --max-time
+          - "5"
+          - "http://{{ ansible_default_ipv4.address }}:{{ port_bi_chan }}"
+      register: thu_port
+      changed_when: false
+      failed_when: false
+      loop: "{{ range(1, 6) | list }}"
+      tags: [nacl]
+
+    - name: Đã sinh traffic bị chặn
+      ansible.builtin.debug:
+        msg: >-
+          Đã gửi 5 request vào port {{ port_bi_chan }} (bị NACL rule 90 chặn).
+          Flow Logs cần 5-10 phút để xuất hiện. Sau đó chạy ../verify.sh
+          hoặc query trong CloudWatch Logs Insights:
+
+            fields @timestamp, srcAddr, dstAddr, dstPort, action
+            | filter action = "REJECT"
+            | sort @timestamp desc
+      tags: [nacl]
+
+    # ============================================================ GHI BÁO CÁO
+    # Phần "cấu hình" thật sự của Ansible. Lưu ý: KHÔNG có task nào cài package,
+    # vì `dnf install` cần internet mà máy này thì không có. Đó không phải giới
+    # hạn của Ansible — đó là hệ quả trực tiếp của thiết kế mạng.
+
+    - name: Ghi báo cáo lên máy
+      ansible.builtin.copy:
+        dest: "{{ bao_cao }}"
+        mode: "0644"
+        content: |
+          Báo cáo mạng — {{ inventory_hostname }}
+          Sinh bởi Ansible lúc {{ ansible_date_time.iso8601 }}
+          ================================================================
+
+          IP riêng            : {{ ansible_default_ipv4.address }}
+          Public IP           : không có
+          Ra được internet    : KHÔNG  (không có NAT Gateway — tiết kiệm ~$33/tháng)
+          Đọc được S3         : CÓ     (qua Gateway Endpoint — miễn phí)
+          Vào máy bằng        : SSM Session Manager (không SSH key, không bastion)
+          IMDS                : v2 bắt buộc (IMDSv1 trả {{ imds_v1.stdout }})
+
+          Vì sao cấu hình này đúng
+          ------------------------
+          Public subnet và private subnet là hai subnet giống hệt nhau. Khác biệt
+          DUY NHẤT nằm ở route table: public có route 0.0.0.0/0 trỏ ra Internet
+          Gateway, private thì không. Không hề có checkbox "public" nào.
+
+          Security Group là STATEFUL: cho phép chiều đi thì chiều về tự động được.
+          Network ACL là STATELESS: phải viết rule cho cả hai chiều, và nó có
+          rule DENY còn SG thì không.
+      tags: [baocao]
+
+    - name: Đọc lại báo cáo
+      ansible.builtin.command:
+        cmd: "cat {{ bao_cao }}"
+      register: bc
+      changed_when: false
+      tags: [baocao]
+
+    - name: Nội dung báo cáo
+      ansible.builtin.debug:
+        msg: "{{ bc.stdout_lines }}"
+      tags: [baocao]
+
+    # ===================================================== NHẮC DỌN DẸP
+    - name: Nhắc chi phí
+      ansible.builtin.debug:
+        msg: >-
+          Lab này đang chạy 3 Interface Endpoint (~$0,03/giờ) + 1 EC2 (~$0,01/giờ).
+          Tổng ~$0,04/giờ. Để quên một tháng là ~$30.
+          XONG THÌ: cd ../terraform && terraform destroy
+      run_once: true

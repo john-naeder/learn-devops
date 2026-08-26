@@ -1,0 +1,271 @@
+---
+# ===========================================================================
+# TUẦN 5 — Ansible nạp dữ liệu và ĐO sự khác biệt Query vs Scan
+#
+# Đọc về "Scan chậm và đắt hơn Query" thì ai cũng gật đầu rồi quên.
+# Playbook này bắt bạn nhìn thấy con số thật trên 2000 item.
+#
+# Chạy:
+#   ansible-playbook site.yml                  # nạp dữ liệu + đo + TTL + stream
+#   ansible-playbook site.yml --tags seed      # chỉ nạp dữ liệu
+#   ansible-playbook site.yml --tags benchmark # chỉ đo Query vs Scan
+#   ansible-playbook site.yml --tags ttl
+#   ansible-playbook site.yml --tags rds       # chỉ khi enable_rds = true
+# ===========================================================================
+
+- name: "Tuần 5 — DynamoDB: thiết kế khoá, GSI, TTL, Streams"
+  hosts: local
+  gather_facts: false
+
+  vars:
+    aws_profile: "{{ lookup('env', 'AWS_PROFILE') | default('learn', true) }}"
+    aws_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    tf_dir: "{{ playbook_dir }}/../terraform"
+    so_khach: 200
+    don_moi_khach: 10 # → 200 x 10 = 2000 item
+
+  tasks:
+
+    - name: Đọc output của Terraform
+      ansible.builtin.command:
+        cmd: terraform output -json
+        chdir: "{{ tf_dir }}"
+      register: tf_raw
+      changed_when: false
+
+    - name: Chuyển thành biến phẳng
+      ansible.builtin.set_fact:
+        tf: >-
+          {{ dict(parsed | dict2items | map(attribute='key') | list
+                | zip(parsed | dict2items | map(attribute='value.value') | list)) }}
+      vars:
+        parsed: "{{ tf_raw.stdout | from_json }}"
+
+    # ==================================================================== SEED
+    #
+    # Mô hình dữ liệu (single-table design):
+    #
+    #   Khách hàng   PK=KHACH#42        SK=HOSO
+    #   Đơn hàng     PK=KHACH#42        SK=DON#2026-08-15#0007
+    #                GSI1PK=TRANGTHAI#dang-giao   GSI1SK=2026-08-15#0007
+    #
+    # Chú ý: đơn hàng dùng CHUNG partition key với khách. Nhờ vậy "lấy khách
+    # và toàn bộ đơn của họ" chỉ tốn MỘT lần Query. Đó là toàn bộ ý nghĩa của
+    # single-table design — thiết kế khoá theo CÁCH BẠN SẼ TRUY VẤN, không
+    # theo cách bạn hình dung thực thể.
+
+    - name: "Nạp {{ so_khach * (don_moi_khach + 1) }} item vào DynamoDB"
+      ansible.builtin.shell:
+        # Dùng CHÍNH interpreter đang chạy ansible-playbook: đó là venv có sẵn
+        # boto3. python3 hệ thống thường KHÔNG có boto3 và task sẽ hỏng.
+        cmd: |
+          {{ ansible_playbook_python }} - <<'PY'
+          import boto3, random, time
+          from datetime import date, timedelta
+
+          s = boto3.Session(profile_name="{{ aws_profile }}", region_name="{{ aws_region }}")
+          t = s.resource("dynamodb").Table("{{ tf.table_name }}")
+
+          trang_thai = ["cho-xu-ly", "dang-giao", "hoan-thanh", "da-huy"]
+          bat_dau = time.time()
+          n = 0
+
+          with t.batch_writer() as bw:
+              for k in range(1, {{ so_khach }} + 1):
+                  bw.put_item(Item={
+                      "PK": f"KHACH#{k}",
+                      "SK": "HOSO",
+                      "ten": f"Khach hang {k}",
+                      "thanh_pho": random.choice(["Ha Noi", "Da Nang", "TPHCM"]),
+                  })
+                  n += 1
+                  for d in range(1, {{ don_moi_khach }} + 1):
+                      ngay = (date(2026, 8, 15) - timedelta(days=random.randint(0, 60))).isoformat()
+                      tt = random.choice(trang_thai)
+                      bw.put_item(Item={
+                          "PK": f"KHACH#{k}",
+                          "SK": f"DON#{ngay}#{d:04d}",
+                          "GSI1PK": f"TRANGTHAI#{tt}",
+                          "GSI1SK": f"{ngay}#{d:04d}",
+                          "so_tien": random.randint(50, 5000) * 1000,
+                          "trang_thai": tt,
+                      })
+                      n += 1
+
+          print(f"Da ghi {n} item trong {time.time() - bat_dau:.1f} giay")
+          PY
+      register: nap
+      changed_when: true
+      tags: [seed]
+
+    - name: Kết quả nạp
+      ansible.builtin.debug:
+        msg: "{{ nap.stdout_lines }}"
+      tags: [seed]
+
+    # =============================================================== BENCHMARK
+    - name: "Đo Query vs Scan vs GSI trên cùng một câu hỏi"
+      ansible.builtin.shell:
+        cmd: |
+          {{ ansible_playbook_python }} - <<'PY'
+          import boto3, time
+          from boto3.dynamodb.conditions import Key
+
+          s = boto3.Session(profile_name="{{ aws_profile }}", region_name="{{ aws_region }}")
+          t = s.resource("dynamodb").Table("{{ tf.table_name }}")
+
+          def do(nhan, ham):
+              t0 = time.time()
+              kq = ham()
+              ms = (time.time() - t0) * 1000
+              print(f"{nhan:<46} {kq['n']:>5} ket qua  "
+                    f"{kq['doc']:>7.1f} RCU  {ms:>7.1f} ms")
+              return kq["doc"]
+
+          # --- Câu hỏi 1: lấy toàn bộ đơn của khách hàng 42 ---
+          def q1_query():
+              r = t.query(
+                  KeyConditionExpression=Key("PK").eq("KHACH#42") & Key("SK").begins_with("DON#"),
+                  ReturnConsumedCapacity="TOTAL",
+              )
+              return {"n": r["Count"], "doc": r["ConsumedCapacity"]["CapacityUnits"]}
+
+          def q1_scan():
+              # Cách SAI: Scan đọc TOÀN BỘ bảng rồi mới lọc ở phía client.
+              # FilterExpression KHÔNG làm giảm lượng đọc — bạn vẫn trả tiền
+              # cho mọi item bị quét qua. Đây là hiểu nhầm phổ biến nhất về
+              # DynamoDB và là câu hỏi thi.
+              tong, dem, khoa = 0.0, 0, None
+              while True:
+                  kw = dict(
+                      FilterExpression=Key("PK").eq("KHACH#42"),
+                      ReturnConsumedCapacity="TOTAL",
+                  )
+                  if khoa:
+                      kw["ExclusiveStartKey"] = khoa
+                  r = t.scan(**kw)
+                  tong += r["ConsumedCapacity"]["CapacityUnits"]
+                  dem += r["Count"]
+                  khoa = r.get("LastEvaluatedKey")
+                  if not khoa:
+                      break
+              return {"n": dem, "doc": tong}
+
+          print()
+          print("CÂU HỎI 1: tất cả đơn hàng của khách #42")
+          print("-" * 80)
+          rcu_q = do("Query theo khoá chính  (ĐÚNG)", q1_query)
+          rcu_s = do("Scan + FilterExpression (SAI)", q1_scan)
+          print(f"{'':46} → Scan tốn nhiều hơn {rcu_s / max(rcu_q, 0.5):.0f} lần")
+
+          # --- Câu hỏi 2: tất cả đơn đang giao, của MỌI khách ---
+          def q2_gsi():
+              r = t.query(
+                  IndexName="GSI1",
+                  KeyConditionExpression=Key("GSI1PK").eq("TRANGTHAI#dang-giao"),
+                  ReturnConsumedCapacity="TOTAL",
+              )
+              return {"n": r["Count"], "doc": r["ConsumedCapacity"]["CapacityUnits"]}
+
+          def q2_scan():
+              tong, dem, khoa = 0.0, 0, None
+              while True:
+                  kw = dict(
+                      FilterExpression=Key("trang_thai").eq("dang-giao"),
+                      ReturnConsumedCapacity="TOTAL",
+                  )
+                  if khoa:
+                      kw["ExclusiveStartKey"] = khoa
+                  r = t.scan(**kw)
+                  tong += r["ConsumedCapacity"]["CapacityUnits"]
+                  dem += r["Count"]
+                  khoa = r.get("LastEvaluatedKey")
+                  if not khoa:
+                      break
+              return {"n": dem, "doc": tong}
+
+          print()
+          print("CÂU HỎI 2: mọi đơn đang giao (khoá chính không trả lời được)")
+          print("-" * 80)
+          rcu_g = do("Query trên GSI1        (ĐÚNG)", q2_gsi)
+          rcu_s2 = do("Scan toàn bảng         (SAI)", q2_scan)
+          print(f"{'':46} → Scan tốn nhiều hơn {rcu_s2 / max(rcu_g, 0.5):.0f} lần")
+          print()
+          print("KET LUAN: GSI ton tai chinh la de tra loi cau hoi 2 ma khong phai Scan.")
+          PY
+      register: bench
+      changed_when: false
+      tags: [benchmark]
+
+    - name: Kết quả đo
+      ansible.builtin.debug:
+        msg: "{{ bench.stdout_lines }}"
+      tags: [benchmark]
+
+    # ===================================================================== TTL
+    - name: "TTL — ghi item hết hạn sau 60 giây"
+      ansible.builtin.shell:
+        cmd: |
+          {{ ansible_playbook_python }} - <<'PY'
+          import boto3, time
+          s = boto3.Session(profile_name="{{ aws_profile }}", region_name="{{ aws_region }}")
+          t = s.resource("dynamodb").Table("{{ tf.table_name }}")
+          het_han = int(time.time()) + 60
+          t.put_item(Item={
+              "PK": "PHIEN#tam-thoi",
+              "SK": "DULIEU",
+              "ghi_chu": "Item nay se tu bien mat",
+              "expires_at": het_han,
+          })
+          print(f"Da ghi item voi expires_at={het_han}")
+          PY
+      changed_when: true
+      tags: [ttl]
+
+    - name: Điều cần biết về TTL
+      ansible.builtin.debug:
+        msg:
+          - "Item PHIEN#tam-thoi sẽ tự bị xoá — nhưng KHÔNG đúng lúc 60 giây."
+          - "AWS cam kết xoá trong vòng 48 GIỜ sau thời điểm TTL, không tức thì."
+          - ""
+          - "Hệ quả thiết kế quan trọng: nếu ứng dụng của bạn PHẢI KHÔNG được"
+          - "thấy item hết hạn, thì phải tự lọc theo expires_at khi đọc."
+          - "Đừng tin TTL sẽ xoá đúng giờ."
+          - ""
+          - "TTL miễn phí hoàn toàn — không tốn write capacity. Đó là lý do nó"
+          - "là đáp án cho 'dọn dữ liệu hết hạn với chi phí thấp nhất'."
+      tags: [ttl]
+
+    # ================================================================== STREAM
+    - name: Đợi Lambda xử lý stream
+      ansible.builtin.pause:
+        seconds: 20
+        prompt: "Đợi DynamoDB Stream đẩy sự kiện sang Lambda"
+      tags: [stream]
+
+    - name: Đọc log của Lambda tiêu thụ stream
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          aws logs tail {{ tf.stream_log_group }}
+          --profile {{ aws_profile }} --region {{ aws_region }}
+          --since 10m --format short 2>/dev/null | head -25
+          || echo "(chưa có log — Lambda có thể chưa được kích hoạt)"
+        executable: /bin/bash
+      register: stream_log
+      changed_when: false
+      tags: [stream]
+
+    - name: Lambda đã thấy gì từ stream
+      ansible.builtin.debug:
+        msg: "{{ stream_log.stdout_lines | default(['(trống)']) }}"
+      tags: [stream]
+
+    # ===================================================================== RDS
+    - name: Trạng thái RDS
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'RDS ĐANG BẬT tại ' ~ tf.rds_endpoint ~ ' — ĐẶT HẸN GIỜ 2 TIẾNG NGAY.'
+             if tf.rds_endpoint else
+             'RDS đang tắt (tốt). Bật khi cần lấy $20: terraform apply -var enable_rds=true' }}
+      tags: [rds, always]

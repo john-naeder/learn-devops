@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab tuần 4 — S3 + CloudFront</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: "Noto Sans", "Segoe UI", "DejaVu Sans", system-ui, sans-serif;
+    max-width: 46rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.7;
+  }
+  h1 { line-height: 1.2; letter-spacing: -0.02em; }
+  code { font-family: "DejaVu Sans Mono", ui-monospace, monospace;
+         background: rgba(128,128,128,.15); padding: .1em .35em; border-radius: 3px; }
+  .box { background: rgba(128,128,128,.1); border-left: 3px solid #0F5257;
+         padding: 1rem 1.25rem; margin: 1.5rem 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  td, th { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid rgba(128,128,128,.3); }
+  #cache { font-weight: 700; }
+</style>
+
+<h1>Trang này được phục vụ bởi CloudFront</h1>
+
+<p>Bucket S3 phía sau <strong>đóng hoàn toàn</strong> — không public, không bật static
+website hosting. Chỉ CloudFront gọi vào được, nhờ Origin Access Control ký request bằng SigV4.</p>
+
+<div class="box">
+  <p><strong>Tự kiểm chứng:</strong> mở Developer Tools → Network → tải lại trang,
+  tìm header <code>x-cache</code>.</p>
+  <table>
+    <tr><td><code>Miss from cloudfront</code></td><td>Lần đầu — CloudFront phải đi lấy từ S3</td></tr>
+    <tr><td><code>Hit from cloudfront</code></td><td>Các lần sau — trả từ cache ở edge</td></tr>
+  </table>
+  <p>Trạng thái đo được từ trang này: <span id="cache">đang đo…</span></p>
+</div>
+
+<h2>Thử gọi thẳng vào S3</h2>
+<p>Lấy URL S3 từ <code>terraform output bucket_url</code> rồi mở trong trình duyệt.
+Bạn sẽ nhận <code>403 AccessDenied</code>. Đó là bằng chứng OAC hoạt động:
+bucket chỉ tin CloudFront, không tin bạn.</p>
+
+<h2>Security header</h2>
+<p>Response của trang này có <code>strict-transport-security</code>,
+<code>x-content-type-options</code>, <code>x-frame-options</code> — được chèn bởi một
+CloudFront Function chạy ở edge, không phải bởi S3.</p>
+
+<script>
+  // Đo cache bằng cách tự gọi lại chính trang này và đọc header.
+  fetch(location.href, { cache: "no-store" })
+    .then(r => {
+      const x = r.headers.get("x-cache") || "(không thấy header, thử tắt adblock)";
+      document.getElementById("cache").textContent = x;
+    })
+    .catch(() => {
+      document.getElementById("cache").textContent = "(không đo được)";
+    });
+</script>

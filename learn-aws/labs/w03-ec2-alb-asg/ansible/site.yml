@@ -1,0 +1,142 @@
+---
+# ===========================================================================
+# TUẦN 3 — Ansible cấu hình nginx trên toàn bộ máy do ASG sinh ra
+#
+# Đây là ranh giới giữa hai công cụ, thể hiện rõ nhất trong cả repo:
+#
+#   Terraform  dựng ALB, ASG, launch template, security group   (hạ tầng)
+#   user data  cài nginx lúc máy sinh ra                        (bootstrap, 1 lần)
+#   Ansible    cấu hình nội dung và tinh chỉnh nginx            (lặp lại được)
+#
+# Vì sao cần cả user data lẫn Ansible? user data chỉ chạy ĐÚNG MỘT LẦN lúc
+# cloud-init. Muốn đổi cấu hình sau đó thì phải thay máy. Ansible chạy lại
+# bao nhiêu lần cũng được, trên đúng những máy đang tồn tại lúc đó.
+#
+# Chạy:
+#   ansible-playbook site.yml
+#   ansible-playbook site.yml -e app_version=v2    # đổi nội dung rồi chạy lại
+# ===========================================================================
+
+- name: "Tuần 3 — cấu hình nginx trên các máy trong ASG"
+  hosts: aws_ec2
+  gather_facts: true
+
+  # Sửa từng máy một, không sửa đồng loạt. Nếu playbook có lỗi thì chỉ hỏng
+  # một máy, ALB vẫn còn máy khác phục vụ. Đây chính là rolling update thủ công,
+  # và là tư duy cần có khi vận hành hệ thống đang chạy thật.
+  serial: 1
+
+  vars:
+    app_version: v1
+
+  tasks:
+
+    - name: Máy đang xử lý
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} tại
+          {{ ansible_ec2_placement_availability_zone | default('?') }}
+
+    # nginx đã được user data cài. Task này để playbook vẫn đúng nếu bạn chạy
+    # trên máy chưa có nginx (ví dụ sau khi đổi AMI).
+    - name: Bảo đảm nginx đã cài
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+      register: cai_nginx
+      # Máy trong lab này ở public subnet nên có internet. Nếu bạn đổi sang
+      # private subnet không NAT, task này sẽ hỏng — và đó là bài học tuần 2.
+      failed_when:
+        - cai_nginx is failed
+        - "'Failed to download' not in (cai_nginx.msg | default(''))"
+
+    - name: Ghi trang chủ bằng template
+      ansible.builtin.template:
+        src: index.html.j2
+        dest: /usr/share/nginx/html/index.html
+        owner: root
+        group: root
+        mode: "0644"
+      notify: nạp lại nginx
+
+    # Endpoint riêng cho health check của ALB. Tách khỏi trang chính là cố ý:
+    # nhờ vậy chaos.yml có thể làm health check fail mà không cần tắt nginx,
+    # mô phỏng đúng kiểu "ứng dụng hỏng nhưng máy vẫn sống".
+    - name: Ghi endpoint health check
+      ansible.builtin.copy:
+        dest: /usr/share/nginx/html/health
+        content: "ok\n"
+        mode: "0644"
+
+    - name: Bật nginx và cho chạy cùng máy
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Kiểm tra tại chỗ trước khi sang máy tiếp theo
+      ansible.builtin.uri:
+        url: http://localhost/health
+        return_content: true
+      register: kiem_tra
+      retries: 5
+      delay: 3
+      until: kiem_tra.status == 200
+
+    - name: Máy này đã sẵn sàng
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} trả 200 trên /health — ALB sẽ giữ máy này."
+
+  handlers:
+    - name: nạp lại nginx
+      # reload chứ không restart: reload không cắt kết nối đang mở.
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+
+
+# ---------------------------------------------------------------------------
+- name: "Kiểm chứng từ ngoài: ALB có luân phiên đổi máy không"
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: Lấy DNS của ALB
+      ansible.builtin.command:
+        cmd: terraform -chdir={{ playbook_dir }}/../terraform output -raw alb_dns_name
+      register: alb
+      changed_when: false
+
+    - name: Gọi ALB 12 lần
+      ansible.builtin.uri:
+        url: "http://{{ alb.stdout }}/"
+        return_content: true
+      register: goi
+      loop: "{{ range(12) | list }}"
+      retries: 3
+      delay: 2
+      until: goi.status is defined and goi.status == 200
+
+    - name: Máy nào đã phục vụ
+      ansible.builtin.debug:
+        msg:
+          - "Thứ tự phục vụ : {{ danh_sach }}"
+          - "Số máy khác nhau: {{ danh_sach | unique | length }}"
+          - "Danh sách máy   : {{ danh_sach | unique }}"
+      vars:
+        danh_sach: >-
+          {{ goi.results | map(attribute='content')
+             | map('regex_search', 'i-[0-9a-f]+') | list }}
+
+    - name: Có ít nhất 2 máy khác nhau trả lời
+      ansible.builtin.assert:
+        that:
+          - (goi.results | map(attribute='content')
+             | map('regex_search', 'i-[0-9a-f]+') | unique | list | length) >= 2
+        success_msg: >-
+          ALB đang chia tải qua nhiều máy ở nhiều AZ. Đây là tính sẵn sàng thật:
+          mất một AZ thì AZ kia vẫn phục vụ.
+        fail_msg: >-
+          Chỉ một máy trả lời. Kiểm tra desired_capacity và trạng thái target
+          group — có thể máy thứ hai đang unhealthy.
