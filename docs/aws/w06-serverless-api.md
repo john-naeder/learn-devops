@@ -27,27 +27,33 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    C["client"]
+    IN["TẦNG VÀO: API Gateway (REST / HTTP / WebSocket) hoặc ALB hoặc Lambda Function URL"]
+    L["LAMBDA execution env"]
+    S3E["S3 event"]
+    SNS["SNS"]
+    EB["EventBridge"]
+    POLL["SQS / Kinesis / DynamoDB Streams"]
+    TARGET["DynamoDB / S3 / bất kỳ API AWS nào"]
+    C -->|"HTTPS"| IN
+    IN -->|"ĐỒNG BỘ — caller chịu trách nhiệm retry"| L
+    S3E -->|"BẤT ĐỒNG BỘ"| L
+    SNS -->|"BẤT ĐỒNG BỘ"| L
+    EB -->|"BẤT ĐỒNG BỘ"| L
+    L -->|"POLL"| POLL
+    L -->|"execution role (IAM)"| TARGET
+    L -->|"resource policy (ai được gọi tôi)"| TARGET
 ```
-                        ┌─────────────── TẦNG VÀO ────────────────┐
-   client ──HTTPS──►    │  API Gateway (REST / HTTP / WebSocket)  │
-                        │  hoặc  ALB      hoặc  Lambda Function URL│
-                        └───────┬─────────────────────────────────┘
-                                │ ĐỒNG BỘ — caller chịu trách nhiệm retry
-                                ▼
-   S3 event ──┐        ┌────────────────────┐        ┌──────────────────┐
-   SNS      ──┼─BẤT ĐB►│      LAMBDA        │◄─POLL──┤ SQS / Kinesis /  │
-   EventBridge┘        │  execution env     │        │ DynamoDB Streams │
-                       │  = microVM Firecra.│        └──────────────────┘
-                       │  INIT → INVOKE →   │         (event source mapping:
-                       │  FREEZE → INVOKE   │          Lambda service tự poll)
-                       └──────┬──────┬──────┘
-        execution role (IAM)  │      │  resource policy (ai được gọi tôi)
-                              ▼      ▼
-                    DynamoDB / S3 / bất kỳ API AWS nào
-                    (KHÔNG cần VPC — chúng là API công khai)
 
-   Cần orchestration?  →  Step Functions gói các Lambda lại thành state machine
-   Cần đăng nhập?      →  Cognito user pool (xác thực) + identity pool (cấp credential AWS)
+- LAMBDA execution env = microVM Firecracker · INIT → INVOKE → FREEZE → INVOKE
+- event source mapping: Lambda service tự poll SQS / Kinesis / DynamoDB Streams
+- DynamoDB / S3 / bất kỳ API AWS nào: KHÔNG cần VPC — chúng là API công khai
+
+```
+Cần orchestration?  →  Step Functions gói các Lambda lại thành state machine
+Cần đăng nhập?      →  Cognito user pool (xác thực) + identity pool (cấp credential AWS)
 ```
 
 Bốn thứ trên bản đồ là bốn thứ bạn phải quyết định trong mọi kiến trúc serverless:
@@ -86,22 +92,24 @@ Thấy cụm đó, ưu tiên managed/serverless trước khi đọc đáp án c�
 
 Một **execution environment** là một microVM. Vòng đời của nó có ba pha:
 
+```mermaid
+flowchart TD
+    I["INIT"]
+    V1["INVOKE"]
+    F["FREEZE"]
+    V2["INVOKE (warm start)"]
+    S["SHUTDOWN"]
+    I --> V1
+    V1 --> F
+    F --> V2
+    V2 --> S
 ```
-INIT      tải code → khởi động runtime → chạy code ngoài handler
-          (chỉ chạy MỘT lần cho mỗi environment)
-   │
-   ▼
-INVOKE    chạy handler(event, context)
-   │
-   ▼
-FREEZE    tiến trình bị đóng băng, KHÔNG bị xoá
-   │      → biến toàn cục còn nguyên, /tmp còn nguyên, kết nối TCP còn nguyên
-   │      → thread nền cũng bị đóng băng (đây là chỗ bug hay xảy ra)
-   ▼
-INVOKE    lần gọi tiếp theo dùng lại environment này  ← "warm start"
-   ...
-SHUTDOWN  AWS thu hồi sau một khoảng nhàn rỗi (không có SLA công bố)
-```
+
+- INIT: tải code → khởi động runtime → chạy code ngoài handler (chỉ chạy MỘT lần cho mỗi environment)
+- INVOKE: chạy handler(event, context)
+- FREEZE: tiến trình bị đóng băng, KHÔNG bị xoá → biến toàn cục còn nguyên, /tmp còn nguyên, kết nối TCP còn nguyên → thread nền cũng bị đóng băng (đây là chỗ bug hay xảy ra)
+- INVOKE: lần gọi tiếp theo dùng lại environment này ← "warm start"
+- SHUTDOWN: AWS thu hồi sau một khoảng nhàn rỗi (không có SLA công bố)
 
 Ba hệ quả bạn phải nhớ:
 
@@ -441,14 +449,17 @@ với cùng manifest. Đề SAA hiếm khi hỏi sâu hơn — và trong khoá h
 
 Con đường suy luận nhanh khi gặp câu hỏi:
 
-```
-Chạy quá 15 phút? ──yes──► không phải Lambda
-   │ no
-Đã đóng gói container? ──no──► Lambda
-   │ yes
-Cần kiểm soát OS/node (GPU, license, daemon)? ──yes──► ECS trên EC2 hoặc EC2
-   │ no
-Đã dùng Kubernetes ở nơi khác? ──yes──► EKS ──no──► ECS Fargate
+```mermaid
+flowchart TD
+    A["Chạy quá 15 phút?"]
+    A -->|"yes"| A1["không phải Lambda"]
+    A -->|"no"| B["Đã đóng gói container?"]
+    B -->|"no"| B1["Lambda"]
+    B -->|"yes"| C["Cần kiểm soát OS/node (GPU, license, daemon)?"]
+    C -->|"yes"| C1["ECS trên EC2 hoặc EC2"]
+    C -->|"no"| D["Đã dùng Kubernetes ở nơi khác?"]
+    D -->|"yes"| D1["EKS"]
+    D -->|"no"| D2["ECS Fargate"]
 ```
 
 ---
@@ -483,11 +494,15 @@ kiểm tra lại trang pricing trước khi tin). EC2 và Fargate tính theo th�
 
 Hệ quả:
 
-```
-tải thưa, bùng nổ, khó đoán  ──► Lambda rẻ hơn nhiều lần (rảnh = $0)
-        │  utilization tăng dần
-        ▼
-tải đều, cao, chạy 24/7      ──► EC2/Fargate rẻ hơn (Spot/RI/Savings Plan)
+```mermaid
+flowchart TD
+    A["tải thưa, bùng nổ, khó đoán"]
+    A1["Lambda rẻ hơn nhiều lần (rảnh = $0)"]
+    B["tải đều, cao, chạy 24/7"]
+    B1["EC2/Fargate rẻ hơn (Spot/RI/Savings Plan)"]
+    A --> A1
+    A -->|"utilization tăng dần"| B
+    B --> B1
 ```
 
 Cách suy nghĩ đúng khi đọc đề: hỏi **"máy sẽ rảnh bao nhiêu phần trăm thời gian?"**

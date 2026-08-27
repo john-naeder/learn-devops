@@ -23,25 +23,37 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    P["PRINCIPAL — ai đang gọi"]
+    P1["root user (đừng dùng)"]
+    P2["IAM user (key dài hạn)"]
+    P3["IAM role (token TẠM THỜI)"]
+    P4["AWS service (ec2, lambda)"]
+    P5["federated identity (SAML/OIDC/Identity Center)"]
+    R["ROLE có HAI policy TÁCH RỜI"]
+    R1["trust policy — AI được mượn tôi?"]
+    R2["permissions policy — Tôi được làm gì?"]
+    REQ["REQUEST → AWS enforcement code"]
+    P --> P1
+    P --> P2
+    P --> P3
+    P --> P4
+    P --> P5
+    P3 -->|"sts:AssumeRole"| R
+    R --> R1
+    R --> R2
+    R --> REQ
 ```
-   PRINCIPAL — "ai đang gọi"
-   root user │ IAM user │ IAM role │ AWS service │ federated identity
-   (đừng dùng) (key dài  (token     (ec2, lambda) (SAML/OIDC/
-                 hạn)     TẠM THỜI)                Identity Center)
-                              │ sts:AssumeRole
-                              ▼
-              ROLE có HAI policy TÁCH RỜI:
-                trust policy       ← AI được mượn tôi?
-                permissions policy ← Tôi được làm gì?
-                              │
-                              ▼
-   REQUEST → AWS enforcement code, theo đúng trình tự:
-     1. Explicit DENY ở BẤT KỲ policy nào?   → DENY. Hết.
-     2. Organizations SCP có Allow?          → không → DENY
-     3. Resource-based policy Allow?         → có thể ĐỦ, dừng ở đây
-     4. Identity-based policy Allow?         → không → DENY
-     5. Permission boundary Allow?           → không → DENY
-     6. Session policy Allow?                → không → DENY  ⇒ còn lại: ALLOW
+
+```
+AWS enforcement code, theo đúng trình tự:
+  1. Explicit DENY ở BẤT KỲ policy nào?   → DENY. Hết.
+  2. Organizations SCP có Allow?          → không → DENY
+  3. Resource-based policy Allow?         → có thể ĐỦ, dừng ở đây
+  4. Identity-based policy Allow?         → không → DENY
+  5. Permission boundary Allow?           → không → DENY
+  6. Session policy Allow?                → không → DENY  ⇒ còn lại: ALLOW
 ```
 
 Bốn loại policy mà đề thi liên tục trộn lẫn để bẫy:
@@ -96,10 +108,11 @@ một bộ credential **tạm thời** từ STS.
 
 Role có **hai policy tách rời hoàn toàn** — chỗ nhiều người hiểu sai nhất:
 
-```
-Role "app-reader"
-├── trust policy       : "ec2.amazonaws.com được assume tôi" → KHÔNG nói được làm gì
-└── permissions policy : "được s3:GetObject trên bucket X"   → KHÔNG nói ai được mượn
+```mermaid
+flowchart TD
+    R["Role app-reader"]
+    R --> T["trust policy: ec2.amazonaws.com được assume tôi — KHÔNG nói được làm gì"]
+    R --> P["permissions policy: được s3:GetObject trên bucket X — KHÔNG nói ai được mượn"]
 ```
 
 Đây là lý do role mạnh hơn user: bạn tách "ai" khỏi "được làm gì", và hai thứ đó
@@ -123,9 +136,10 @@ dịch vụ sở hữu.
 
 Hai loại này trả lời hai câu hỏi ngược nhau và cùng tồn tại.
 
-```
-   IAM user / role ──── identity policy ────► S3 bucket ◄──── resource policy
-                        "Được làm gì?"                       "Ai được đụng vào tôi?"
+```mermaid
+flowchart LR
+    I["IAM user / role"] -->|"identity policy: Được làm gì?"| S["S3 bucket"]
+    R["resource policy: Ai được đụng vào tôi?"] --> S
 ```
 
 |                            | Identity-based                                | Resource-based                                                                                                           |
@@ -234,29 +248,35 @@ Mặc định **mọi request đều bị từ chối** (implicit deny), ngoại
 user. AWS enforcement code chạy theo trình tự sau; mỗi bước có thể kết thúc sớm
 bằng **Deny**, chỉ khi đi hết mới là **Allow**.
 
-```
-   REQUEST
-      │
-      ▼
-   1. Explicit DENY ở BẤT KỲ policy nào?  ──── có ────────────► ❌ DENY (chung cuộc)
-      │ không
-      ▼
-   2. Organizations SCP (chỉ member acc)  ──── không Allow ───► ❌ DENY
-      │ Allow
-      ▼
-   3. Resource-based policy               ──── Allow trực tiếp cho
-      │ không quyết định                       IAM user / role session ──► ✅ ALLOW
-      ▼                                        (bỏ qua các bước còn lại)
-   4. Identity-based policy (user+group)  ──── không Allow ───► ❌ DENY
-      │ Allow
-      ▼
-   5. Permission boundary (nếu có gắn)    ──── không Allow ───► ❌ DENY
-      │ Allow
-      ▼
-   6. Session policy (nếu là session)     ──── không Allow ───► ❌ DENY
-      │ Allow
-      ▼
-   ✅ ALLOW
+```mermaid
+flowchart TD
+    REQ["REQUEST"]
+    S1["1. Explicit DENY ở BẤT KỲ policy nào?"]
+    S2["2. Organizations SCP (chỉ member acc)"]
+    S3["3. Resource-based policy"]
+    S4["4. Identity-based policy (user+group)"]
+    S5["5. Permission boundary (nếu có gắn)"]
+    S6["6. Session policy (nếu là session)"]
+    OK["ALLOW"]
+    D1["DENY (chung cuộc)"]
+    D2["DENY"]
+    D3["DENY"]
+    D4["DENY"]
+    D5["DENY"]
+    A3["ALLOW (bỏ qua các bước còn lại)"]
+    REQ --> S1
+    S1 -->|"có"| D1
+    S1 -->|"không"| S2
+    S2 -->|"không Allow"| D2
+    S2 -->|"Allow"| S3
+    S3 -->|"Allow trực tiếp cho IAM user / role session"| A3
+    S3 -->|"không quyết định"| S4
+    S4 -->|"không Allow"| D3
+    S4 -->|"Allow"| S5
+    S5 -->|"không Allow"| D4
+    S5 -->|"Allow"| S6
+    S6 -->|"không Allow"| D5
+    S6 -->|"Allow"| OK
 ```
 
 Bốn điều rút ra:
@@ -358,12 +378,19 @@ resource "aws_iam_instance_profile" "app" {
 
 ### Cơ chế: credential đến từ đâu
 
+```mermaid
+flowchart TD
+    A["aws s3 ls"]
+    B["SDK/CLI dò credential provider chain theo thứ tự"]
+    C["IMDS trả credential TẠM THỜI do STS cấp cho role, hết hạn thì SDK tự lấy bộ mới"]
+    A --> B
+    A --> C
 ```
-  aws s3 ls
-     └─► SDK/CLI dò credential provider chain theo thứ tự:
-           1. tham số trong code   2. biến môi trường   3. ~/.aws/credentials
-           …   5. Instance Metadata Service tại 169.254.169.254   ← chỗ này
-     └─► IMDS trả credential TẠM THỜI do STS cấp cho role, hết hạn thì SDK tự lấy bộ mới
+
+```
+Credential provider chain theo thứ tự:
+  1. tham số trong code   2. biến môi trường   3. ~/.aws/credentials
+  …   5. Instance Metadata Service tại 169.254.169.254   ← chỗ này
 ```
 
 Bạn không phải làm gì cả. Không có key nào trên đĩa, không có gì để rò rỉ qua git.
@@ -436,11 +463,13 @@ cần 20 lần tạo user, nghỉ việc cần 20 lần xóa. **AWS IAM Identity
 AWS Single Sign-On, đổi tên 26/07/2022) giải bài toán đó: **liên kết một lần, truy
 cập mọi account.**
 
-```
-   IdP của bạn (Entra ID / Okta / AD,     IAM Identity Center      AWS accounts
-   hoặc user tạo thẳng trong IC)     ──►  đồng bộ user & group ──► prod / dev /
-                                          permission set            audit / …
-                                          AWS access portal
+```mermaid
+flowchart LR
+    IDP["IdP của bạn (Entra ID / Okta / AD, hoặc user tạo thẳng trong IC)"]
+    IC["IAM Identity Center — đồng bộ user & group, permission set, AWS access portal"]
+    ACC["AWS accounts: prod / dev / audit / …"]
+    IDP --> IC
+    IC --> ACC
 ```
 
 - **Identity source** — nơi user thật sự sống: IdP ngoài qua SAML 2.0, Active

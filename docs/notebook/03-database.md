@@ -217,15 +217,15 @@ Hai thứ khác nhau và đề có phân biệt:
 Đây là điều duy nhất phải hiểu về Aurora; mọi tính năng khác là hệ quả. Aurora
 **tách** tầng lưu trữ thành một dịch vụ riêng trải qua 3 AZ; instance chỉ là compute.
 
-```
-   writer            reader 1          reader 2
-      |                 |                 |
-      +--------+--------+--------+--------+
-               |  ghi redo log   |  đọc trang
-      +--------v-----------------v--------+
-      |   Aurora storage: 6 bản, 3 AZ     |
-      |   segment 10 GiB, tự chữa lành    |
-      +-----------------------------------+
+```mermaid
+flowchart TD
+    W["writer"]
+    R1["reader 1"]
+    R2["reader 2"]
+    ST["Aurora storage: 6 bản, 3 AZ — segment 10 GiB, tự chữa lành"]
+    W -->|"ghi redo log"| ST
+    R1 -->|"đọc trang"| ST
+    R2 -->|"đọc trang"| ST
 ```
 
 Cơ chế cần thuộc:

@@ -66,19 +66,30 @@ kiểm tra và báo cáo. Playbook sẽ:
 
 ## Terraform dựng những gì
 
+```mermaid
+flowchart TD
+    B["S3 bucket (private, chặn public hoàn toàn)"]
+    F1["readme.txt"]
+    F2["private/luong.txt"]
+    BP["bucket policy: Deny mọi request không dùng TLS"]
+    P["IAM policy w01-s3-reader"]
+    U["IAM user w01-reader"]
+    R["IAM role w01-ec2-reader"]
+    IP["instance profile"]
+    AA["IAM Access Analyzer"]
+    B --> F1
+    B --> F2
+    B --> BP
+    P --> U
+    P --> R
+    R --> IP
 ```
-S3 bucket (private, chặn public hoàn toàn)
-├── readme.txt
-├── private/luong.txt          ← cố ý để bạn phát hiện lỗ hổng
-└── bucket policy: Deny mọi request không dùng TLS   ← resource policy
 
-IAM policy "w01-s3-reader"     ← identity policy, dùng chung cho cả hai bên dưới
-├── IAM user "w01-reader"
-└── IAM role "w01-ec2-reader"  ← trust policy: chỉ ec2.amazonaws.com assume được
-    └── instance profile        ← vỏ bọc bắt buộc để gắn role vào EC2
-
-IAM Access Analyzer             ← miễn phí, soi policy hở ra ngoài account
-```
+- `private/luong.txt` — cố ý để bạn phát hiện lỗ hổng
+- bucket policy là resource policy; IAM policy `w01-s3-reader` là identity policy, dùng chung cho cả user lẫn role
+- IAM role `w01-ec2-reader` — trust policy: chỉ ec2.amazonaws.com assume được
+- instance profile — vỏ bọc bắt buộc để gắn role vào EC2
+- IAM Access Analyzer — miễn phí, soi policy hở ra ngoài account
 
 ---
 

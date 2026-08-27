@@ -25,31 +25,54 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart LR
+    SVC["Dịch vụ AWS (có sẵn, không cần agent)"]
+    AGT["CloudWatch Agent (RAM, disk, log của OS)"]
+    CWM["CloudWatch Metrics"]
+    AL["Alarm"]
+    SNS["SNS"]
+    EM["email/SMS"]
+    AS["Auto Scaling action"]
+    E2A["EC2 action (stop/reboot)"]
+    CWL["CloudWatch Logs"]
+    MF["Metric filter"]
+    LI["Logs Insights (truy vấn)"]
+    SF["Subscription filter"]
+    FH["Firehose/Lambda"]
+    APIC["API call"]
+    CT["CloudTrail"]
+    S3["S3 (giữ lâu)"]
+    TR["Trace"]
+    XR["X-Ray"]
+    EB["EventBridge (sự kiện thay đổi trạng thái, kể cả alarm)"]
+    TGT["Lambda / SSM Automation / Step Functions"]
+    SVC -->|"metric"| CWM
+    AGT -->|"metric"| CWM
+    AGT -->|"log"| CWL
+    CWM --> AL
+    AL --> SNS
+    SNS --> EM
+    AL --> AS
+    AL --> E2A
+    CWL --> MF
+    MF --> AL
+    CWL --> LI
+    CWL --> SF
+    SF --> FH
+    APIC --> CT
+    CT --> S3
+    CT --> CWL
+    TR --> XR
+    EB --> TGT
 ```
-   THU THẬP                     LƯU & TRUY VẤN              PHẢN ỨNG
-   ────────                     ──────────────              ────────
-   Dịch vụ AWS ─────metric────▶ CloudWatch Metrics ──▶ Alarm ──▶ SNS ──▶ email/SMS
-   (có sẵn, không cần agent)         │                    │
-                                     │                    ├──▶ Auto Scaling action
-   CloudWatch Agent ────metric───────┘                    └──▶ EC2 action (stop/reboot)
-   (RAM, disk, log của OS)                                       │
-        │                                                        │
-        └──────log────▶ CloudWatch Logs ──▶ Metric filter ───────┘
-                              │        └──▶ Logs Insights (truy vấn)
-                              │        └──▶ Subscription filter ──▶ Firehose/Lambda
-                              │
-   API call ────▶ CloudTrail ─┴──▶ S3 (giữ lâu) + CloudWatch Logs (cảnh báo)
-                              │
-   Trace ───────▶ X-Ray ──────┘
-                              │
-                       EventBridge ──▶ Lambda / SSM Automation / Step Functions
-                       (sự kiện thay đổi trạng thái, kể cả alarm)
 
-   VẬN HÀNH: Systems Manager (Session Manager · Run Command · Patch Manager ·
-             State Manager · Inventory · Automation · Parameter Store) · AWS Backup
-   IaC:      CloudFormation ──▶ Stack ──▶ Change set · Drift detection · StackSet
-   TIỀN:     Cost Explorer (nhìn lại) · Budgets (cảnh báo trước) · Cost Allocation Tag
-             Trusted Advisor (best practice) · Compute Optimizer (right-sizing)
+```
+VẬN HÀNH: Systems Manager (Session Manager · Run Command · Patch Manager ·
+          State Manager · Inventory · Automation · Parameter Store) · AWS Backup
+IaC:      CloudFormation → Stack → Change set · Drift detection · StackSet
+TIỀN:     Cost Explorer (nhìn lại) · Budgets (cảnh báo trước) · Cost Allocation Tag
+          Trusted Advisor (best practice) · Compute Optimizer (right-sizing)
 ```
 
 ---

@@ -30,15 +30,41 @@ cd ../terraform && terraform apply -var gay_loi_don_hang=false   # tắt lại
 
 ## Kiến trúc
 
+```mermaid
+flowchart LR
+    P["publish"]
+    S["SNS topic"]
+    Q1["SQS đơn hàng"]
+    L1["Lambda"]
+    D["DLQ"]
+    Q2["SQS kho hàng"]
+    L2["Lambda kho"]
+    P --> S
+    S -->|"filter: don-hang"| Q1
+    Q1 --> L1
+    L1 -->|"lỗi x3"| D
+    S -->|"filter: don-hang, nhap-kho"| Q2
+    Q2 --> L2
 ```
-                       ┌── filter: don-hang ──────→ SQS đơn hàng ──→ Lambda ──(lỗi x3)──→ DLQ
-publish → SNS topic ───┤
-                       └── filter: don-hang,       → SQS kho hàng ──→ Lambda kho
-                                   nhap-kho
 
-EventBridge rate(5 min) ──→ Lambda báo cáo          [MẶC ĐỊNH TẮT]
-Step Functions ──→ KiemTra → Wait 3s → GhiNhanKho
-                     └─(catch)─→ XuLyLoi
+```mermaid
+flowchart LR
+    E["EventBridge rate(5 min)"]
+    R["Lambda báo cáo (MẶC ĐỊNH TẮT)"]
+    E --> R
+```
+
+```mermaid
+flowchart LR
+    SF["Step Functions"]
+    K["KiemTra"]
+    W["Wait 3s"]
+    G["GhiNhanKho"]
+    X["XuLyLoi"]
+    SF --> K
+    K --> W
+    W --> G
+    K -->|"catch"| X
 ```
 
 **Ý chính:** producer publish vào **một** topic và **không biết** có bao nhiêu consumer.

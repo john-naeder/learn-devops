@@ -59,39 +59,49 @@ Một cây chỉ có ích khi bạn **không** phải đọc hết nó.
 Vì sao: 15 phút là giới hạn cứng của Lambda. Trả lời xong câu này là Lambda hoặc
 biến mất, hoặc trở thành đáp án gần như chắc chắn.
 
+```mermaid
+flowchart TD
+    Q["Một đơn vị công việc chạy bao lâu?"]
+    L["trên 15 phút, hoặc chạy liên tục"]
+    Q1["Cần kiểm soát OS / kernel module / license theo core / agent đặc thù?"]
+    EC2["EC2"]
+    Q2["Đã đóng gói container chưa?"]
+    EB["Elastic Beanstalk (EC2 bên dưới)"]
+    Q3["Có ràng buộc Kubernetes thật sự?"]
+    EKS["EKS"]
+    ECS["ECS"]
+    Q4["Ai quản node?"]
+    FG["Fargate (launch type của cả ECS lẫn EKS)"]
+    E2L["EC2 launch type"]
+    S["tối đa 15 phút, chạy theo sự kiện, có lúc rảnh hoàn toàn"]
+    Q5["Kích thước gói / RAM / đĩa tạm có vượt giới hạn Lambda không?"]
+    LC["container image cho Lambda (tới 10 GB) hoặc Fargate"]
+    LA["Lambda"]
+    Q6["Job hàng loạt, hàng nghìn task, có phụ thuộc lẫn nhau, chạy vài giờ?"]
+    BA["AWS Batch (trên Fargate hoặc EC2 Spot)"]
+    Q --> L
+    L --> Q1
+    Q1 --> EC2
+    L --> Q2
+    Q2 -->|"Chưa, mà chỉ là web app đơn giản"| EB
+    Q2 -->|"Rồi"| Q3
+    Q3 -->|"CÓ"| EKS
+    Q3 -->|"KHÔNG"| ECS
+    L --> Q4
+    Q4 -->|"Không muốn quản node nào cả"| FG
+    Q4 -->|"Cần GPU, instance store, Spot sâu, DaemonSet, trên 16 vCPU / 120 GB RAM"| E2L
+    Q --> S
+    S --> Q5
+    Q5 -->|"Vượt"| LC
+    Q5 -->|"Không vượt"| LA
+    S --> Q6
+    Q6 --> BA
 ```
-Một đơn vị công việc chạy bao lâu?
-│
-├─ > 15 phút, hoặc chạy liên tục
-│  │
-│  ├─ Cần kiểm soát OS / kernel module / license theo core / agent đặc thù?
-│  │     → EC2  (lift-and-shift, Oracle/SQL Server BYOL, phần mềm bên thứ ba)
-│  │
-│  ├─ Đã đóng gói container chưa?
-│  │  ├─ Chưa, mà chỉ là web app đơn giản  → Elastic Beanstalk (EC2 bên dưới)
-│  │  └─ Rồi ↓
-│  │
-│  ├─ Có ràng buộc Kubernetes thật sự?
-│  │  │   (manifest/Helm chart đã có, team đã quen, cần chạy giống trên on-prem,
-│  │  │    cần CRD/operator)
-│  │  ├─ CÓ  → EKS
-│  │  └─ KHÔNG → ECS   (ít khái niệm hơn, tích hợp IAM/ALB/CloudWatch sẵn)
-│  │
-│  └─ Ai quản node?
-│     ├─ Không muốn quản node nào cả        → Fargate (launch type của cả ECS lẫn EKS)
-│     └─ Cần GPU, instance store, Spot sâu,
-│        DaemonSet, > 16 vCPU / 120 GB RAM  → EC2 launch type
-│
-└─ ≤ 15 phút, chạy theo sự kiện, có lúc rảnh hoàn toàn
-   │
-   ├─ Kích thước gói / RAM / đĩa tạm có vượt giới hạn Lambda không?
-   │  (250 MB giải nén, 10 GB RAM, 10 GB /tmp, payload 6 MB đồng bộ)
-   │  ├─ Vượt → container image cho Lambda (tới 10 GB) hoặc Fargate
-   │  └─ Không vượt → Lambda
-   │
-   └─ Job hàng loạt, hàng nghìn task, có phụ thuộc lẫn nhau, chạy vài giờ?
-      → AWS Batch (trên Fargate hoặc EC2 Spot)
-```
+
+- EC2: lift-and-shift, Oracle/SQL Server BYOL, phần mềm bên thứ ba
+- Ràng buộc Kubernetes thật sự: manifest/Helm chart đã có, team đã quen, cần chạy giống trên on-prem, cần CRD/operator
+- ECS: ít khái niệm hơn, tích hợp IAM/ALB/CloudWatch sẵn
+- Giới hạn Lambda: 250 MB giải nén, 10 GB RAM, 10 GB /tmp, payload 6 MB đồng bộ
 
 **Chốt:** "no infrastructure to manage" + event-driven + ngắn → Lambda. "No servers
 to manage" + container đã có → Fargate, vì "no servers" không có nghĩa là "phải là
@@ -109,31 +119,42 @@ Cơ chế: [`01-compute.md`](01-compute.md).
 Vì sao: đó là ranh giới duy nhất mà Spot đi qua được. Mọi thứ còn lại chỉ là bài
 toán cam kết dài hạn.
 
+```mermaid
+flowchart TD
+    Q["Bị thu hồi (interruption) có sao không?"]
+    SP["Spot"]
+    Y["Có sao"]
+    Q1["Chạy đều đặn, biết trước ít nhất 1 năm?"]
+    A1["Compute Savings Plans"]
+    A2["EC2 Instance Savings Plans"]
+    A3["Standard Reserved Instance"]
+    A4["Convertible RI"]
+    Q2["Cần ĐẢM BẢO có máy trong một AZ (sự kiện, DR, pilot light)?"]
+    A5["On-Demand Capacity Reservation hoặc Zonal RI"]
+    Q3["Ràng buộc license theo socket / core, cần thấy hardware?"]
+    A6["Dedicated Host"]
+    Q4["Chỉ cần cách ly phần cứng khỏi tenant khác?"]
+    A7["Dedicated Instance"]
+    OD["On-Demand"]
+    Q -->|"Không sao — stateless, checkpoint được, hàng đợi retry được"| SP
+    Q --> Y
+    Y --> Q1
+    Q1 -->|"Cần đổi family / Region / kể cả sang Fargate & Lambda"| A1
+    Q1 -->|"Chắc chắn family + Region, muốn giảm sâu hơn"| A2
+    Q1 -->|"Cần bán lại cam kết trên Marketplace"| A3
+    Q1 -->|"Cần đổi instance family trong kỳ cam kết"| A4
+    Y --> Q2
+    Q2 --> A5
+    Y --> Q3
+    Q3 --> A6
+    Y --> Q4
+    Q4 --> A7
+    Y -->|"Còn lại"| OD
 ```
-Bị thu hồi (interruption) có sao không?
-│
-├─ Không sao — stateless, checkpoint được, hàng đợi retry được
-│     → Spot  (giảm tới ~90%; dùng nhiều instance type + nhiều AZ để giảm rủi ro)
-│
-└─ Có sao ↓
-   │
-   ├─ Chạy đều đặn, biết trước ≥ 1 năm?
-   │  ├─ Cần đổi family / Region / kể cả sang Fargate & Lambda → Compute Savings Plans
-   │  ├─ Chắc chắn family + Region, muốn giảm sâu hơn         → EC2 Instance Savings Plans
-   │  ├─ Cần bán lại cam kết trên Marketplace                 → Standard Reserved Instance
-   │  └─ Cần đổi instance family trong kỳ cam kết             → Convertible RI
-   │
-   ├─ Cần ĐẢM BẢO có máy trong một AZ (sự kiện, DR, pilot light)?
-   │     → On-Demand Capacity Reservation (kết hợp được với Savings Plans)
-   │       hoặc Zonal RI
-   │
-   ├─ Ràng buộc license theo socket / core, cần thấy hardware?
-   │     → Dedicated Host
-   ├─ Chỉ cần cách ly phần cứng khỏi tenant khác?
-   │     → Dedicated Instance (rẻ hơn Host, không nhìn thấy socket)
-   │
-   └─ Còn lại → On-Demand
-```
+
+- Spot: giảm tới ~90%; dùng nhiều instance type + nhiều AZ để giảm rủi ro
+- On-Demand Capacity Reservation: kết hợp được với Savings Plans
+- Dedicated Instance: rẻ hơn Host, không nhìn thấy socket
 
 **Câu hỏi phân biệt hay bị bỏ qua:** *"đề đang hỏi giảm giá hay đảm bảo capacity?"*
 Savings Plans và RI vùng (regional RI) **không** giữ chỗ máy. Chỉ Zonal RI và
@@ -156,37 +177,47 @@ vào nhánh thứ hai, dù cả bốn đáp án đều nói về tiền.
 Vì sao: đây là ràng buộc của **ứng dụng**, không phải của kiến trúc sư. Ứng dụng
 legacy ghi vào `/data/report.csv` thì S3 bị loại ngay, dù S3 rẻ hơn mười lần.
 
-```
-Ứng dụng truy cập kiểu gì?
-│
-├─ HTTP API (PUT/GET object) hoặc dữ liệu bất biến  → S3 ↓ (3a)
-├─ Block device, mount thành /dev/xvdf              → EBS / instance store ↓ (3b)
-└─ Đường dẫn file, nhiều máy đọc ghi cùng lúc       → EFS / FSx ↓ (3c)
+```mermaid
+flowchart TD
+    Q["Ứng dụng truy cập kiểu gì?"]
+    A["S3 (3a)"]
+    B["EBS / instance store (3b)"]
+    C["EFS / FSx (3c)"]
+    Q -->|"HTTP API (PUT/GET object) hoặc dữ liệu bất biến"| A
+    Q -->|"Block device, mount thành /dev/xvdf"| B
+    Q -->|"Đường dẫn file, nhiều máy đọc ghi cùng lúc"| C
 ```
 
 #### 3a. S3 — chọn storage class
 
 **Câu hỏi loại nửa: bạn có biết pattern truy cập không?**
 
+```mermaid
+flowchart TD
+    Q["Biết pattern truy cập?"]
+    IT["S3 Intelligent-Tiering"]
+    K["BIẾT"]
+    Q1["Cần lấy trong mili-giây?"]
+    A1["S3 Standard"]
+    A2["S3 Standard-IA (min 30 ngày)"]
+    A3["S3 One Zone-IA (rẻ hơn ~20%)"]
+    A4["S3 Glacier Instant Retrieval (min 90 ngày)"]
+    Q2["Chờ được?"]
+    A5["S3 Glacier Flexible Retrieval (min 90 ngày)"]
+    A6["S3 Glacier Deep Archive (min 180 ngày)"]
+    Q -->|"KHÔNG biết, hoặc pattern thay đổi"| IT
+    Q --> K
+    K --> Q1
+    Q1 -->|"Truy cập thường xuyên (nhiều lần/tháng)"| A1
+    Q1 -->|"Ít truy cập, vẫn cần ngay, dữ liệu quan trọng"| A2
+    Q1 -->|"Ít truy cập, TÁI TẠO ĐƯỢC nếu mất AZ"| A3
+    Q1 -->|"Quý một lần, vẫn cần ngay"| A4
+    K --> Q2
+    Q2 -->|"Phút đến giờ, năm một lần"| A5
+    Q2 -->|"12–48 giờ, giữ 7–10 năm vì luật"| A6
 ```
-Biết pattern truy cập?
-│
-├─ KHÔNG biết, hoặc pattern thay đổi  → S3 Intelligent-Tiering
-│     (không có phí retrieval; không có min duration; object < 128 KB không bị
-│      tính phí monitoring và cũng không được tự động chuyển tầng)
-│
-└─ BIẾT ↓
-   │
-   ├─ Cần lấy trong mili-giây?
-   │  ├─ Truy cập thường xuyên (nhiều lần/tháng)  → S3 Standard
-   │  ├─ Ít truy cập, vẫn cần ngay, dữ liệu quan trọng → S3 Standard-IA (min 30 ngày)
-   │  ├─ Ít truy cập, TÁI TẠO ĐƯỢC nếu mất AZ     → S3 One Zone-IA (rẻ hơn ~20%)
-   │  └─ Quý một lần, vẫn cần ngay                → S3 Glacier Instant Retrieval (min 90 ngày)
-   │
-   └─ Chờ được?
-      ├─ Phút đến giờ, năm một lần                → S3 Glacier Flexible Retrieval (min 90 ngày)
-      └─ 12–48 giờ, giữ 7–10 năm vì luật          → S3 Glacier Deep Archive (min 180 ngày)
-```
+
+- S3 Intelligent-Tiering: không có phí retrieval; không có min duration; object nhỏ hơn 128 KB không bị tính phí monitoring và cũng không được tự động chuyển tầng
 
 Hai câu hỏi phụ quyết định đáp án. **"Mất dữ liệu có tạo lại được không?"** — chỉ
 khi "có" thì One Zone-IA mới đúng, vì nó nằm trên một AZ. **"Object nhỏ hay lớn?"**
@@ -197,45 +228,58 @@ khi "có" thì One Zone-IA mới đúng, vì nó nằm trên một AZ. **"Object
 
 **Câu hỏi loại nửa: dữ liệu có cần sống sót qua lệnh stop không?**
 
+```mermaid
+flowchart TD
+    Q["Sống sót qua stop/terminate?"]
+    IS["Instance store"]
+    E["EBS"]
+    Q1["Bottleneck là gì?"]
+    A1["io2 Block Express"]
+    A2["st1"]
+    A3["sc1"]
+    A4["gp3"]
+    Q2["Cần một volume gắn vào nhiều instance cùng lúc?"]
+    A5["io2 Multi-Attach"]
+    Q -->|"KHÔNG cần (cache, scratch, buffer, tempdb, shuffle của Spark)"| IS
+    Q -->|"CÓ cần"| E
+    E --> Q1
+    Q1 -->|"IOPS ngẫu nhiên rất cao / latency dưới mili-giây / độ bền 99,999%"| A1
+    Q1 -->|"Throughput tuần tự lớn, giá rẻ (log, big data, ETL)"| A2
+    Q1 -->|"Dữ liệu lạnh, quét hiếm khi"| A3
+    Q1 -->|"Còn lại — kể cả phần lớn database vừa"| A4
+    E --> Q2
+    Q2 --> A5
 ```
-Sống sót qua stop/terminate?
-│
-├─ KHÔNG cần (cache, scratch, buffer, tempdb, shuffle của Spark)
-│     → Instance store — IOPS cao nhất, latency thấp nhất, giá đã nằm trong giá instance
-│
-└─ CÓ cần → EBS ↓
-   │
-   ├─ Bottleneck là gì?
-   │  ├─ IOPS ngẫu nhiên rất cao / cần latency dưới mili-giây / cần độ bền 99,999%
-   │  │     → io2 Block Express  (tới 256.000 IOPS, 4.000 MiB/s, 64 TiB)
-   │  ├─ Throughput tuần tự lớn, giá rẻ (log, big data, ETL)
-   │  │     → st1  (HDD, tính theo MiB/s, không hợp boot volume)
-   │  ├─ Dữ liệu lạnh, quét hiếm khi
-   │  │     → sc1  (rẻ nhất, chậm nhất)
-   │  └─ Còn lại — kể cả phần lớn database vừa
-   │        → gp3  (baseline 3.000 IOPS + 125 MiB/s, mua thêm tới 80.000 IOPS
-   │                và 2.000 MiB/s, IOPS tách rời khỏi dung lượng)
-   │
-   └─ Cần một volume gắn vào nhiều instance cùng lúc?
-        → io2 Multi-Attach (tối đa 16 instance, cùng AZ, cần cluster-aware
-          filesystem — không phải ext4/xfs thường)
-```
+
+- Instance store: IOPS cao nhất, latency thấp nhất, giá đã nằm trong giá instance
+- io2 Block Express: tới 256.000 IOPS, 4.000 MiB/s, 64 TiB
+- st1: HDD, tính theo MiB/s, không hợp boot volume
+- sc1: rẻ nhất, chậm nhất
+- gp3: baseline 3.000 IOPS + 125 MiB/s, mua thêm tới 80.000 IOPS và 2.000 MiB/s, IOPS tách rời khỏi dung lượng
+- io2 Multi-Attach: tối đa 16 instance, cùng AZ, cần cluster-aware filesystem — không phải ext4/xfs thường
 
 **gp3 gần như luôn thắng gp2 trong câu hỏi cost:** gp2 buộc mua dung lượng để lấy
 IOPS (3 IOPS/GiB), gp3 rẻ hơn ~20% mỗi GiB và bán IOPS riêng.
 
 #### 3c. File share — EFS hay FSx
 
+```mermaid
+flowchart TD
+    Q["Giao thức mà ứng dụng nói?"]
+    A1["EFS"]
+    A2["FSx for Windows File Server"]
+    A3["FSx for Lustre"]
+    A4["FSx for NetApp ONTAP"]
+    A5["FSx for OpenZFS"]
+    Q -->|"NFS, Linux, co giãn tự động"| A1
+    Q -->|"SMB + Active Directory"| A2
+    Q -->|"POSIX, HPC/ML, dataset ở S3"| A3
+    Q -->|"NFS + SMB + iSCSI cùng lúc"| A4
+    Q -->|"ZFS snapshot, NFS thuần"| A5
 ```
-Giao thức mà ứng dụng nói?
-│
-├─ NFS, Linux, co giãn tự động      → EFS (Standard nhiều AZ; One Zone rẻ hơn ~47%;
-│                                     lifecycle sang IA/Archive để giảm tiền)
-├─ SMB + Active Directory           → FSx for Windows File Server
-├─ POSIX, HPC/ML, dataset ở S3      → FSx for Lustre (scratch rẻ, persistent có replication)
-├─ NFS + SMB + iSCSI cùng lúc       → FSx for NetApp ONTAP
-└─ ZFS snapshot, NFS thuần          → FSx for OpenZFS
-```
+
+- EFS: Standard nhiều AZ; One Zone rẻ hơn ~47%; lifecycle sang IA/Archive để giảm tiền
+- FSx for Lustre: scratch rẻ, persistent có replication
 
 Chi tiết ở [`02-storage.md`](02-storage.md).
 
@@ -249,41 +293,60 @@ Vì sao: đây là ranh giới thật giữa DynamoDB và mọi thứ còn lại
 phải là ranh giới — ranh giới là *access pattern có cố định không*. DynamoDB
 scale vô hạn vì nó từ chối cho bạn query tuỳ hứng.
 
+```mermaid
+flowchart TD
+    Q["Truy vấn có biết trước không?"]
+    Y["CÓ"]
+    D["DynamoDB"]
+    D1["+ DAX"]
+    D2["+ Global Tables"]
+    D3["+ DynamoDB Streams"]
+    DOC["DocumentDB"]
+    NEP["Neptune"]
+    TS["Timestream"]
+    N["KHÔNG — cần join, group by, ad-hoc, report thay đổi mỗi tuần"]
+    W["Tính chất tải?"]
+    OLTP["OLTP — nhiều giao dịch nhỏ, ghi và đọc lẫn lộn"]
+    RDS["RDS"]
+    AUR["Aurora"]
+    ASV["Aurora Serverless v2"]
+    AGD["Aurora Global Database"]
+    OLAP["OLAP — quét hàng tỉ dòng, ít cột, cho BI"]
+    ATH["Athena"]
+    RSH["Redshift"]
+    EMR["EMR"]
+    F["Khả năng chịu lỗi"]
+    F1["Multi-AZ (KHÔNG phải read replica)"]
+    F2["Read replica (KHÔNG phải Multi-AZ)"]
+    F3["Multi-AZ + read replica, hoặc Aurora"]
+    Q --> Y
+    Y -->|"Cần latency mili-giây một chữ số, throughput không trần"| D
+    D -->|"Cần đọc micro-giây, đọc lặp lại rất nhiều"| D1
+    D -->|"Cần ghi ở nhiều Region cùng lúc"| D2
+    D -->|"Cần phản ứng theo thay đổi item"| D3
+    Y -->|"Ứng dụng đã viết bằng driver MongoDB"| DOC
+    Y -->|"Dữ liệu là quan hệ nhiều bậc (bạn của bạn, gian lận)"| NEP
+    Y -->|"Chuỗi thời gian, mỗi điểm có timestamp + tag"| TS
+    Q --> N
+    N --> W
+    W --> OLTP
+    OLTP -->|"Bắt buộc engine cụ thể (Oracle, SQL Server, MariaDB, Db2)"| RDS
+    OLTP -->|"MySQL / PostgreSQL, cần HA và throughput tốt hơn"| AUR
+    OLTP -->|"Tải bật tắt bất định, có lúc gần bằng 0"| ASV
+    OLTP -->|"Cần đọc ở Region khác với độ trễ ~1 giây"| AGD
+    W --> OLAP
+    OLAP -->|"Dữ liệu đã nằm ở S3, query thưa, không muốn cụm chạy 24/7"| ATH
+    OLAP -->|"Query thường xuyên, cần join phức tạp, cần concurrency"| RSH
+    OLAP -->|"Cần Spark/Hive, xử lý tuỳ biến"| EMR
+    N --> F
+    F -->|"automatic failover"| F1
+    F -->|"scale read traffic"| F2
+    F -->|"both"| F3
 ```
-Truy vấn có biết trước không?
-│
-├─ CÓ — luôn "lấy item theo user_id", "lấy 20 order mới nhất của user_id"
-│  │
-│  ├─ Cần latency mili-giây một chữ số, throughput không trần → DynamoDB
-│  │  ├─ Cần đọc micro-giây, đọc lặp lại rất nhiều      → + DAX
-│  │  ├─ Cần ghi ở nhiều Region cùng lúc                → + Global Tables
-│  │  └─ Cần phản ứng theo thay đổi item                → + DynamoDB Streams
-│  │
-│  ├─ Ứng dụng đã viết bằng driver MongoDB               → DocumentDB
-│  ├─ Dữ liệu là quan hệ nhiều bậc (bạn của bạn, gian lận) → Neptune
-│  └─ Chuỗi thời gian, mỗi điểm có timestamp + tag       → Timestream
-│
-└─ KHÔNG — cần join, group by, ad-hoc, report thay đổi mỗi tuần
-   │
-   ├─ Tính chất tải?
-   │  │
-   │  ├─ OLTP — nhiều giao dịch nhỏ, ghi và đọc lẫn lộn
-   │  │  ├─ Bắt buộc engine cụ thể (Oracle, SQL Server, MariaDB, Db2) → RDS
-   │  │  ├─ MySQL / PostgreSQL, cần HA và throughput tốt hơn          → Aurora
-   │  │  ├─ Tải bật tắt bất định, có lúc gần bằng 0                   → Aurora Serverless v2
-   │  │  └─ Cần đọc ở Region khác với độ trễ ~1 giây                  → Aurora Global Database
-   │  │
-   │  └─ OLAP — quét hàng tỉ dòng, ít cột, cho BI
-   │     ├─ Dữ liệu đã nằm ở S3, query thưa, không muốn cụm chạy 24/7 → Athena
-   │     ├─ Query thường xuyên, cần join phức tạp, cần concurrency    → Redshift
-   │     └─ Cần Spark/Hive, xử lý tuỳ biến                            → EMR
-   │
-   └─ Sau khi chọn xong engine, hỏi tiếp về khả năng chịu lỗi:
-      ├─ "automatic failover"      → Multi-AZ (KHÔNG phải read replica)
-      ├─ "scale read traffic"      → Read replica (KHÔNG phải Multi-AZ)
-      └─ "both"                    → Multi-AZ + read replica, hoặc Aurora
-                                     (Aurora replica vừa phục vụ đọc vừa làm ứng viên failover)
-```
+
+- CÓ — luôn "lấy item theo user_id", "lấy 20 order mới nhất của user_id"
+- Sau khi chọn xong engine, hỏi tiếp về khả năng chịu lỗi
+- Aurora replica vừa phục vụ đọc vừa làm ứng viên failover
 
 **Ba cặp hay bị đổi chỗ:** "automatic failover" → Multi-AZ, không phải read replica
 (replica promote **thủ công** và sao chép bất đồng bộ). "Offload reporting queries"
@@ -301,39 +364,39 @@ Chi tiết ở [`03-database.md`](03-database.md).
 Vì sao: đó là khác biệt bản chất giữa **queue** và **stream**, và nó quyết định
 giữa SQS và Kinesis — cặp bị nhầm nhiều nhất ở Domain 3.
 
+```mermaid
+flowchart TD
+    Q["Sau khi consumer xử lý xong, dữ liệu còn không?"]
+    N["KHÔNG còn — mỗi message thuộc về đúng một consumer, xử lý xong thì xoá"]
+    SQ["SQS Standard"]
+    FI["SQS FIFO"]
+    Y["CÒN — nhiều consumer độc lập cùng đọc, đọc lại được"]
+    KDS["Kinesis Data Streams"]
+    FH["Data Firehose"]
+    P["Nhiều bên nhận cùng một thông báo NGAY, không cần đọc lại"]
+    SNS["SNS"]
+    EB["EventBridge"]
+    SF["Step Functions"]
+    ST["Standard"]
+    EX["Express"]
+    Q --> N
+    N -->|"Chỉ cần buffer, thứ tự không quan trọng, chấp nhận trùng lặp"| SQ
+    N -->|"Bắt buộc đúng thứ tự và không trùng"| FI
+    Q --> Y
+    Y -->|"Cần đọc lại theo cửa sổ thời gian, giữ thứ tự trong partition (clickstream, IoT, log)"| KDS
+    Y -->|"Chỉ cần đổ thẳng vào S3 / Redshift / OpenSearch / Splunk"| FH
+    Y --> P
+    P -->|"Target là email/SMS/HTTP/SQS/Lambda, cần throughput rất cao"| SNS
+    P -->|"Cần lọc theo NỘI DUNG event, event từ AWS/SaaS, schema registry, lịch cron"| EB
+    Y -->|"Cần điều phối nhiều bước: rẽ nhánh, retry có backoff, song song, chờ duyệt"| SF
+    SF -->|"Chạy dài (tới 1 năm), cần lịch sử từng bước, exactly-once"| ST
+    SF -->|"Rất nhiều lần gọi, mỗi lần tối đa 5 phút, at-least-once"| EX
 ```
-Sau khi consumer xử lý xong, dữ liệu còn không?
-│
-├─ KHÔNG còn — mỗi message thuộc về đúng một consumer, xử lý xong thì xoá
-│  │
-│  ├─ Chỉ cần buffer, thứ tự không quan trọng, chấp nhận trùng lặp
-│  │     → SQS Standard  (throughput không trần, at-least-once, best-effort order)
-│  │
-│  └─ Bắt buộc đúng thứ tự và không trùng
-│        → SQS FIFO  (300 TPS không batch / 3.000 có batch; bật high throughput
-│                     mode lên tới 70.000 TPS mỗi API action)
-│
-└─ CÒN — nhiều consumer độc lập cùng đọc, đọc lại được
-   │
-   ├─ Cần đọc lại theo cửa sổ thời gian, giữ thứ tự trong partition, xử lý
-   │  hàng trăm nghìn bản ghi/giây (clickstream, IoT, log)
-   │     → Kinesis Data Streams  (mỗi shard: 1 MB/s hoặc 1.000 record/s ghi vào,
-   │       2 MB/s đọc ra; giữ 24 giờ mặc định, tới 365 ngày)
-   │
-   ├─ Chỉ cần đổ thẳng vào S3 / Redshift / OpenSearch / Splunk, không viết consumer
-   │     → Data Firehose  (near-real-time, buffer theo dung lượng hoặc thời gian)
-   │
-   ├─ Nhiều bên nhận cùng một thông báo NGAY, không cần đọc lại
-   │  ├─ Target là email/SMS/HTTP/SQS/Lambda, cần throughput rất cao → SNS
-   │  └─ Cần lọc theo NỘI DUNG event, nhận event từ AWS service hay
-   │     SaaS bên thứ ba, cần schema registry, cần lịch cron        → EventBridge
-   │
-   └─ Cần điều phối nhiều bước: rẽ nhánh, retry có backoff, chạy song song,
-      chờ người duyệt, giữ trạng thái
-        → Step Functions
-          ├─ Chạy dài (tới 1 năm), cần lịch sử từng bước, exactly-once → Standard
-          └─ Rất nhiều lần gọi, mỗi lần ≤ 5 phút, at-least-once        → Express
-```
+
+- SQS Standard: throughput không trần, at-least-once, best-effort order
+- SQS FIFO: 300 TPS không batch / 3.000 có batch; bật high throughput mode lên tới 70.000 TPS mỗi API action
+- Kinesis Data Streams: mỗi shard 1 MB/s hoặc 1.000 record/s ghi vào, 2 MB/s đọc ra; giữ 24 giờ mặc định, tới 365 ngày
+- Data Firehose: near-real-time, buffer theo dung lượng hoặc thời gian
 
 **Mẫu phải nhận ra ngay:** `SNS → nhiều SQS queue` (fan-out bền). SNS một mình mất
 message nếu subscriber đang chết; thêm SQS để mỗi consumer có vùng đệm và tốc độ
@@ -353,24 +416,20 @@ Chi tiết ở [`06-tich-hop.md`](06-tich-hop.md).
 
 **Câu hỏi loại nửa: bộ cân bằng có cần NHÌN vào nội dung HTTP không?**
 
+```mermaid
+flowchart TD
+    Q["Cần đọc host header / path / cookie / query string?"]
+    ALB["ALB"]
+    NLB["NLB"]
+    GWLB["GWLB"]
+    Q -->|"CÓ"| ALB
+    Q -->|"KHÔNG, chỉ chuyển tiếp gói"| NLB
+    Q -->|"Cần đẩy toàn bộ traffic qua firewall/IDS bên thứ ba"| GWLB
 ```
-Cần đọc host header / path / cookie / query string?
-│
-├─ CÓ  → ALB
-│   ├─ Định tuyến theo path, host, header, method, source IP
-│   ├─ Target: EC2, IP, Lambda, container (dynamic port mapping)
-│   ├─ Gắn được WAF, Cognito authenticate, sticky session
-│   └─ Client IP thật nằm trong header X-Forwarded-For
-│
-├─ KHÔNG, chỉ chuyển tiếp gói → NLB
-│   ├─ TCP, UDP, TLS; latency thấp nhất; hàng triệu request/giây
-│   ├─ Có IP tĩnh mỗi AZ (gán được Elastic IP) → hợp firewall on-prem allowlist
-│   ├─ GIỮ NGUYÊN source IP khi target theo instance ID
-│   └─ Là lớp duy nhất đứng sau VPC Endpoint Service (PrivateLink)
-│
-└─ Cần đẩy toàn bộ traffic qua firewall/IDS bên thứ ba → GWLB
-    └─ Bọc gói bằng GENEVE cổng 6081, appliance ở giữa nhìn thấy gói nguyên bản
-```
+
+- ALB: định tuyến theo path, host, header, method, source IP; target EC2, IP, Lambda, container (dynamic port mapping); gắn được WAF, Cognito authenticate, sticky session; client IP thật nằm trong header X-Forwarded-For
+- NLB: TCP, UDP, TLS; latency thấp nhất; hàng triệu request/giây; có IP tĩnh mỗi AZ (gán được Elastic IP) → hợp firewall on-prem allowlist; GIỮ NGUYÊN source IP khi target theo instance ID; là lớp duy nhất đứng sau VPC Endpoint Service (PrivateLink)
+- GWLB: bọc gói bằng GENEVE cổng 6081, appliance ở giữa nhìn thấy gói nguyên bản
 
 **Ba tình huống ép phải kết hợp:** "static IP" + "WAF" + "path-based routing" →
 NLB hoặc Global Accelerator đứng trước ALB. "Preserve the original client IP" →
@@ -389,33 +448,33 @@ another VPC without peering" → NLB + VPC Endpoint Service.
 Vì sao: nếu đích là AWS thì đáp án gần như luôn là endpoint — rẻ hơn, riêng tư
 hơn, và khớp với cụm "without traversing the public internet" mà đề rất hay dùng.
 
+```mermaid
+flowchart TD
+    Q["Đích đến là gì?"]
+    GE["Gateway Endpoint"]
+    IE["Interface Endpoint (PrivateLink)"]
+    PL["PrivateLink tới VPC Endpoint Service"]
+    I4["Internet công cộng, IPv4, chỉ đi ra"]
+    NGW["NAT Gateway"]
+    NIN["NAT instance"]
+    EIG["Egress-Only Internet Gateway"]
+    IGW["public subnet + Internet Gateway"]
+    Q -->|"S3 hoặc DynamoDB"| GE
+    Q -->|"Dịch vụ AWS khác (SSM, ECR, KMS, Secrets Manager, CloudWatch Logs, STS, SQS...)"| IE
+    Q -->|"Dịch vụ của một VPC khác / một SaaS chạy trên AWS"| PL
+    Q --> I4
+    I4 -->|"Muốn managed, tự scale 5 → 100 Gbps, không phải vá"| NGW
+    I4 -->|"Rẻ hơn ở quy mô nhỏ, chấp nhận tự quản"| NIN
+    Q -->|"Internet công cộng, IPv6, chỉ đi ra"| EIG
+    Q -->|"Cần cả nhận kết nối từ internet vào"| IGW
 ```
-Đích đến là gì?
-│
-├─ S3 hoặc DynamoDB
-│     → Gateway Endpoint
-│        MIỄN PHÍ, thêm một prefix list vào route table, không có ENI, không
-│        dùng được từ on-prem hay từ VPC khác
-│
-├─ Dịch vụ AWS khác (SSM, ECR, KMS, Secrets Manager, CloudWatch Logs, STS, SQS...)
-│     → Interface Endpoint (PrivateLink)
-│        ENI có IP riêng trong subnet, tính tiền theo giờ + theo GB, DÙNG ĐƯỢC
-│        từ on-prem qua DX/VPN, bảo vệ bằng Security Group
-│
-├─ Dịch vụ của một VPC khác / một SaaS chạy trên AWS
-│     → PrivateLink tới VPC Endpoint Service (bên cung cấp đặt NLB hoặc GWLB)
-│
-├─ Internet công cộng, IPv4, chỉ đi ra (apt update, gọi API bên ngoài)
-│  ├─ Muốn managed, tự scale 5 → 100 Gbps, không phải vá  → NAT Gateway
-│  └─ Rẻ hơn ở quy mô nhỏ, chấp nhận tự quản              → NAT instance
-│        (phải TẮT source/destination check, tự lo HA, băng thông theo instance)
-│
-├─ Internet công cộng, IPv6, chỉ đi ra
-│     → Egress-Only Internet Gateway  (NAT Gateway không phải câu trả lời cho IPv6 egress)
-│
-└─ Cần cả nhận kết nối từ internet vào → phải nằm ở public subnet + Internet Gateway
-      (nghĩa là nó không còn là private subnet nữa — đọc kỹ đề trước khi chọn)
-```
+
+- Gateway Endpoint: MIỄN PHÍ, thêm một prefix list vào route table, không có ENI, không dùng được từ on-prem hay từ VPC khác
+- Interface Endpoint: ENI có IP riêng trong subnet, tính tiền theo giờ + theo GB, DÙNG ĐƯỢC từ on-prem qua DX/VPN, bảo vệ bằng Security Group
+- PrivateLink: bên cung cấp đặt NLB hoặc GWLB
+- NAT instance: phải TẮT source/destination check, tự lo HA, băng thông theo instance
+- Egress-Only Internet Gateway: NAT Gateway không phải câu trả lời cho IPv6 egress
+- public subnet + Internet Gateway: nghĩa là nó không còn là private subnet nữa — đọc kỹ đề trước khi chọn
 
 **Hai câu hỏi phụ quyết định đáp án.** *"Đề có nói cost không?"* — nếu có và đích
 là S3 thì chọn Gateway Endpoint, vì NAT tính cả phí giờ lẫn phí mỗi GB xử lý còn
@@ -432,35 +491,35 @@ nó. "Instances in AZ-b lost internet access when AZ-a failed" chính là lỗi 
 Vì sao: chỉ Direct Connect mới hứa được điều đó. VPN đi qua internet công cộng
 nên không bao giờ là đáp án cho "consistent latency".
 
+```mermaid
+flowchart TD
+    Q["Yêu cầu chính là gì?"]
+    DX["Direct Connect"]
+    DX1["IPsec VPN chạy trên DX (public VIF), hoặc MACsec"]
+    DX2["Direct Connect Gateway"]
+    VPN["Site-to-Site VPN"]
+    HA1["Direct Connect làm chính + VPN làm dự phòng"]
+    HA2["Hai Direct Connect ở hai location khác nhau"]
+    TGW["Transit Gateway (+ DX Gateway nếu có DX)"]
+    PEER["VPC Peering"]
+    CVPN["AWS Client VPN"]
+    Q -->|"Consistent latency, dedicated bandwidth, reduce transfer cost, large sustained transfer"| DX
+    DX -->|"Cần mã hoá"| DX1
+    DX -->|"Cần chạm nhiều VPC / nhiều Region"| DX2
+    Q -->|"Quickly, within days, temporary, backup, encrypted over the internet"| VPN
+    Q -->|"Highly available hybrid connectivity + cost"| HA1
+    Q -->|"Highly available, không quan tâm giá"| HA2
+    Q -->|"Nhiều VPC và/hoặc nhiều site, cần định tuyến bắc cầu"| TGW
+    Q -->|"Đúng hai VPC, không bắc cầu, rẻ nhất"| PEER
+    Q -->|"Người dùng cá nhân vào VPC từ laptop"| CVPN
 ```
-Yêu cầu chính là gì?
-│
-├─ "Consistent / predictable latency", "dedicated bandwidth", "reduce data
-│   transfer cost", "large sustained transfer"
-│     → Direct Connect
-│        Dedicated 1/10/100 Gbps; hosted 50 Mbps – 25 Gbps
-│        Thời gian setup: TUẦN đến THÁNG
-│        KHÔNG mã hoá mặc định
-│        ├─ Cần mã hoá → IPsec VPN chạy trên DX (public VIF), hoặc MACsec
-│        └─ Cần chạm nhiều VPC / nhiều Region → Direct Connect Gateway
-│
-├─ "Quickly", "within days", "temporary", "backup", "encrypted over the internet"
-│     → Site-to-Site VPN
-│        1,25 Gbps mỗi tunnel, hai tunnel mỗi kết nối, IPsec sẵn
-│        Tính theo giờ, dựng trong vài chục phút
-│
-├─ "Highly available hybrid connectivity" + "cost"
-│     → Direct Connect làm chính + VPN làm dự phòng   (mẫu chuẩn của đề)
-│   "Highly available" + "không quan tâm giá"
-│     → Hai Direct Connect ở hai location khác nhau
-│
-├─ Nhiều VPC và/hoặc nhiều site, cần định tuyến bắc cầu
-│     → Transit Gateway (+ DX Gateway nếu có DX); ~50 Gbps mỗi VPC attachment
-├─ Đúng hai VPC, không bắc cầu, rẻ nhất
-│     → VPC Peering (không transitive, không overlap CIDR, không phí giờ)
-└─ Người dùng cá nhân vào VPC từ laptop
-      → AWS Client VPN (là người, không phải site)
-```
+
+- Direct Connect: Dedicated 1/10/100 Gbps; hosted 50 Mbps – 25 Gbps. Thời gian setup: TUẦN đến THÁNG. KHÔNG mã hoá mặc định
+- Site-to-Site VPN: 1,25 Gbps mỗi tunnel, hai tunnel mỗi kết nối, IPsec sẵn. Tính theo giờ, dựng trong vài chục phút
+- DX chính + VPN dự phòng: mẫu chuẩn của đề
+- Transit Gateway: ~50 Gbps mỗi VPC attachment
+- VPC Peering: không transitive, không overlap CIDR, không phí giờ
+- AWS Client VPN: là người, không phải site
 
 **Bẫy transitive:** peering không bắc cầu — A↔B và B↔C **không** cho A nói chuyện
 với C. Đề tả mạng peering đầy đủ giữa 10 VPC rồi hỏi "reduce operational overhead"
@@ -484,35 +543,33 @@ Thời gian ước lượng = Dung lượng / (Băng thông thực × 0,125)
 | 100 TB | ~100 ngày | ~10 ngày | ~1 ngày |
 | 1 PB | ~3 năm | ~100 ngày | ~10 ngày |
 
+```mermaid
+flowchart TD
+    Q["Kết quả tính ra có chấp nhận được không?"]
+    Y["CÓ — mạng đủ"]
+    DS["DataSync"]
+    SG["Storage Gateway"]
+    DMS["DMS"]
+    REP["S3 Replication (CRR/SRR) + S3 Batch Operations"]
+    TA["S3 Transfer Acceleration hoặc multipart upload"]
+    N["KHÔNG — mạng không kịp, hoặc không có đường mạng"]
+    SN["thiết bị vật lý: Snow Family"]
+    Q --> Y
+    Y -->|"Đồng bộ LẶP LẠI theo lịch, giữa NFS/SMB/HDFS/S3, cần verify và báo cáo"| DS
+    Y -->|"On-prem vẫn phải dùng dữ liệu như file share / iSCSI / băng từ SAU khi lên cloud"| SG
+    Y -->|"Là database, có thể phải đổi engine"| DMS
+    Y -->|"Từ bucket S3 sang bucket S3"| REP
+    Y -->|"Người dùng khắp thế giới upload vào một bucket"| TA
+    Q --> N
+    N --> SN
 ```
-Kết quả tính ra có chấp nhận được không?
-│
-├─ CÓ — mạng đủ
-│  │
-│  ├─ Đồng bộ LẶP LẠI theo lịch, giữa NFS/SMB/HDFS/S3, cần verify và báo cáo
-│  │     → DataSync  (agent trên on-prem; tự retry, tự kiểm tra toàn vẹn)
-│  │
-│  ├─ On-prem vẫn phải dùng dữ liệu như file share / iSCSI / băng từ SAU khi lên cloud
-│  │     → Storage Gateway — File (NFS/SMB → S3), Volume (iSCSI, cached hoặc
-│  │       stored), Tape (VTL thay thư viện băng từ, đổ vào Glacier)
-│  │
-│  ├─ Là database, có thể phải đổi engine
-│  │     → DMS  (+ Schema Conversion Tool nếu đổi engine, ví dụ Oracle → Aurora PostgreSQL)
-│  │        DMS chép được cả lúc nguồn đang chạy (CDC), nên downtime gần bằng 0
-│  │
-│  ├─ Từ bucket S3 sang bucket S3
-│  │     → S3 Replication (CRR/SRR) cho dữ liệu MỚI
-│  │       S3 Batch Operations cho dữ liệu CŨ đã có sẵn
-│  │
-│  └─ Người dùng khắp thế giới upload vào một bucket
-│        → S3 Transfer Acceleration (đi qua edge của CloudFront)
-│          hoặc multipart upload cho file lớn
-│
-└─ KHÔNG — mạng không kịp, hoặc không có đường mạng
-      → thiết bị vật lý: Snow Family
-        Xem [Nguồn nói khác](#nguon-noi-khac) — dòng Snow đã đóng với khách mới,
-        đề thi vẫn hỏi, đời thực thì dùng AWS Data Transfer Terminal hoặc partner.
-```
+
+- DataSync: agent trên on-prem; tự retry, tự kiểm tra toàn vẹn
+- Storage Gateway — File (NFS/SMB → S3), Volume (iSCSI, cached hoặc stored), Tape (VTL thay thư viện băng từ, đổ vào Glacier)
+- DMS: + Schema Conversion Tool nếu đổi engine, ví dụ Oracle → Aurora PostgreSQL. DMS chép được cả lúc nguồn đang chạy (CDC), nên downtime gần bằng 0
+- S3 Replication (CRR/SRR) cho dữ liệu MỚI; S3 Batch Operations cho dữ liệu CŨ đã có sẵn
+- S3 Transfer Acceleration đi qua edge của CloudFront
+- Snow Family: xem [Nguồn nói khác](#nguon-noi-khac) — dòng Snow đã đóng với khách mới, đề thi vẫn hỏi, đời thực thì dùng AWS Data Transfer Terminal hoặc partner
 
 **Chốt DataSync với Storage Gateway:** *"sau khi chuyển xong, on-prem còn đọc dữ
 liệu đó không?"* Còn → Storage Gateway. Không → DataSync.
@@ -528,35 +585,38 @@ liệu đó không?"* Còn → Storage Gateway. Không → DataSync.
 
 Đảo thứ tự là hỏng: RPO 0 mà chỉ có backup hàng đêm thì mọi lựa chọn RTO đều vô nghĩa.
 
+```mermaid
+flowchart TD
+    Q["RPO ≈ 0 (không được mất giao dịch nào)?"]
+    Y["CÓ → phải có replication liên tục"]
+    R1["RDS Multi-AZ (đồng bộ) / Aurora (6 bản trên 3 AZ)"]
+    R2["Aurora Global Database (~1 giây), DynamoDB Global Tables (~1 giây), S3 CRR (phút; RTC cam kết 15 phút)"]
+    N["KHÔNG, mất vài giờ chấp nhận được → snapshot/backup theo lịch là đủ"]
+    Q --> Y
+    Y -->|"Trong một Region"| R1
+    Y -->|"Xuyên Region"| R2
+    Q --> N
 ```
-RPO ≈ 0 (không được mất giao dịch nào)?
-│
-├─ CÓ → phải có replication liên tục
-│  ├─ Trong một Region  → RDS Multi-AZ (đồng bộ) / Aurora (6 bản trên 3 AZ)
-│  └─ Xuyên Region      → Aurora Global Database (~1 giây)
-│                         DynamoDB Global Tables (~1 giây, ghi được cả hai nơi)
-│                         S3 Cross-Region Replication (phút; RTC cam kết 15 phút)
-│
-└─ KHÔNG, mất vài giờ chấp nhận được → snapshot/backup theo lịch là đủ
 
 Rồi tới RTO:
-│
-├─ Vài ngày / 24 giờ, ngân sách nhỏ nhất
-│     → Backup & Restore
-│        AWS Backup + snapshot copy sang Region khác; dựng lại bằng CloudFormation
-│
-├─ Vài chục phút đến vài giờ
-│     → Pilot Light
-│        DB đã replicate và đang chạy; compute đã có AMI + launch template nhưng TẮT
-│
-├─ Vài phút
-│     → Warm Standby
-│        Bản thu nhỏ đang CHẠY thật ở Region kia; sự cố thì scale lên
-│
-└─ Gần như 0, không có downtime
-      → Multi-site active/active
-         Cả hai Region cùng phục vụ; Route 53 latency hoặc Global Accelerator ở trên
+
+```mermaid
+flowchart TD
+    T["RTO"]
+    A1["Backup & Restore"]
+    A2["Pilot Light"]
+    A3["Warm Standby"]
+    A4["Multi-site active/active"]
+    T -->|"Vài ngày / 24 giờ, ngân sách nhỏ nhất"| A1
+    T -->|"Vài chục phút đến vài giờ"| A2
+    T -->|"Vài phút"| A3
+    T -->|"Gần như 0, không có downtime"| A4
 ```
+
+- Backup & Restore: AWS Backup + snapshot copy sang Region khác; dựng lại bằng CloudFormation
+- Pilot Light: DB đã replicate và đang chạy; compute đã có AMI + launch template nhưng TẮT
+- Warm Standby: bản thu nhỏ đang CHẠY thật ở Region kia; sự cố thì scale lên
+- Multi-site active/active: cả hai Region cùng phục vụ; Route 53 latency hoặc Global Accelerator ở trên
 
 | Chiến lược | RPO | RTO | Chi phí thường trực | Dấu hiệu trong đề |
 |---|---|---|---|---|
@@ -577,34 +637,30 @@ Rồi tới RTO:
 Vì sao: mỗi loại có đúng một chỗ hợp lý để cache, và ba đáp án mồi luôn là ba lớp
 còn lại.
 
+```mermaid
+flowchart TD
+    Q["Cái gì đang bị tính lại nhiều lần?"]
+    CF["CloudFront"]
+    AG["API Gateway cache"]
+    EC["ElastiCache — CẦN sửa code ứng dụng"]
+    RD["Redis / Valkey"]
+    MC["Memcached"]
+    DAX["DAX"]
+    RR["read replica"]
+    Q -->|"HTTP response / file tĩnh, người dùng ở nhiều nơi trên thế giới"| CF
+    Q -->|"Response của REST API, giống nhau giữa nhiều client"| AG
+    Q -->|"Kết quả truy vấn SQL đắt tiền, session, leaderboard, rate limit counter"| EC
+    EC -->|"Cần persistence, replica, failover, pub/sub, sorted set, Lua"| RD
+    EC -->|"Chỉ cần cache key-value đơn giản, muốn scale ngang, tận dụng nhiều lõi"| MC
+    Q -->|"Item DynamoDB, đọc lặp lại rất nhiều, cần micro-giây"| DAX
+    Q -->|"Không phải cache mà là tải đọc thuần trên database quan hệ"| RR
 ```
-Cái gì đang bị tính lại nhiều lần?
-│
-├─ HTTP response / file tĩnh, người dùng ở nhiều nơi trên thế giới
-│     → CloudFront
-│        Cache key = phần bạn chọn từ path + header + cookie + query string
-│        TTL điều khiển bằng Cache-Control của origin, hoặc bằng cache policy
-│        KHÔNG cần sửa code ứng dụng
-│
-├─ Response của REST API, tính bằng backend, giống nhau giữa nhiều client
-│     → API Gateway cache  (0,5 – 237 GB, TTL mặc định 300 giây, tối đa 3.600)
-│        Cũng KHÔNG cần sửa code
-│
-├─ Kết quả truy vấn SQL đắt tiền, session, leaderboard, rate limit counter
-│     → ElastiCache — CẦN sửa code ứng dụng
-│        ├─ Cần persistence, replica, failover, pub/sub, sorted set, Lua
-│        │     → Redis / Valkey
-│        └─ Chỉ cần cache key-value đơn giản, muốn scale ngang bằng cách thêm node,
-│           muốn tận dụng nhiều lõi
-│              → Memcached  (không replication, không persistence, mất node là mất data)
-│
-├─ Item DynamoDB, đọc lặp lại rất nhiều, cần micro-giây
-│     → DAX  (write-through, API tương thích DynamoDB nên đổi endpoint là chính,
-│             chỉ dùng được với DynamoDB, nằm trong VPC)
-│
-└─ Không phải cache mà là tải đọc thuần trên database quan hệ
-      → read replica  (giảm tải writer; nhưng có replication lag, không đọc-sau-ghi được)
-```
+
+- CloudFront: cache key = phần bạn chọn từ path + header + cookie + query string. TTL điều khiển bằng Cache-Control của origin, hoặc bằng cache policy. KHÔNG cần sửa code ứng dụng
+- API Gateway cache: 0,5 – 237 GB, TTL mặc định 300 giây, tối đa 3.600. Cũng KHÔNG cần sửa code
+- Memcached: không replication, không persistence, mất node là mất data
+- DAX: write-through, API tương thích DynamoDB nên đổi endpoint là chính, chỉ dùng được với DynamoDB, nằm trong VPC
+- read replica: giảm tải writer; nhưng có replication lag, không đọc-sau-ghi được
 
 **Chọn chiến lược ghi cache** — đề hỏi ít nhưng hỏi thì rất dễ mất điểm:
 
@@ -623,35 +679,40 @@ CloudFront hoặc API Gateway cache — xem [`21-tu-khoa-de-thi.md`](21-tu-khoa-
 
 **Câu hỏi loại nửa: chủ thể là con người hay là workload?**
 
+```mermaid
+flowchart TD
+    Q["Ai cần quyền?"]
+    H["CON NGƯỜI"]
+    H1["IAM Identity Center + permission set"]
+    H2["Federation SAML 2.0, hoặc nối IdP vào Identity Center"]
+    H3["Cognito user pool"]
+    H4["IAM user — chỉ khi hết cách, và bắt buộc MFA"]
+    W["WORKLOAD"]
+    W1["IAM role gắn vào compute"]
+    W2["Cross-account"]
+    W2A["role trong B, trust policy tin A, principal ở A gọi sts:AssumeRole"]
+    W2B["resource-based policy: S3, KMS, SQS, SNS, Lambda, ECR, Secrets Manager"]
+    W3["IAM Roles Anywhere (X.509) hoặc OIDC identity provider"]
+    W4["Cognito identity pool"]
+    Q --> H
+    H -->|"Nhiều account trong Organizations, cần một chỗ đăng nhập"| H1
+    H -->|"Đã có IdP doanh nghiệp (AD, Okta, Entra ID)"| H2
+    H -->|"Người dùng cuối của ứng dụng"| H3
+    H --> H4
+    Q --> W
+    W -->|"Chạy trên EC2 / ECS / Lambda / EKS trong cùng account"| W1
+    W -->|"Ở account A, cần gọi tài nguyên ở account B"| W2
+    W2 -->|"Cách chuẩn"| W2A
+    W2 -->|"Cách rút gọn"| W2B
+    W -->|"Chạy ngoài AWS (on-prem server, CI/CD, GitHub Actions)"| W3
+    W -->|"Ứng dụng mobile/web cần credentials tạm để gọi thẳng S3/DynamoDB"| W4
 ```
-Ai cần quyền?
-│
-├─ CON NGƯỜI
-│  ├─ Nhiều account trong Organizations, cần một chỗ đăng nhập
-│  │     → IAM Identity Center + permission set (thay cho IAM user ở từng account)
-│  ├─ Đã có IdP doanh nghiệp (AD, Okta, Entra ID)
-│  │     → Federation SAML 2.0, hoặc nối IdP vào Identity Center
-│  ├─ Người dùng cuối của ứng dụng  → Cognito user pool
-│  └─ Vẫn cần IAM user? Chỉ khi hết cách — và bắt buộc MFA
-│
-└─ WORKLOAD
-   ├─ Chạy trên EC2 / ECS / Lambda / EKS trong cùng account
-   │     → IAM role gắn vào compute (instance profile, task role, execution role,
-   │        IRSA hoặc EKS Pod Identity). KHÔNG bao giờ là access key trong file.
-   │
-   ├─ Ở account A, cần gọi tài nguyên ở account B
-   │  ├─ Cách chuẩn: role trong B, trust policy tin A, principal ở A gọi sts:AssumeRole
-   │  │     └─ Nếu A là BÊN THỨ BA → bắt buộc thêm sts:ExternalId (chống confused deputy)
-   │  └─ Cách rút gọn cho vài dịch vụ có resource-based policy:
-   │        S3 bucket policy, KMS key policy, SQS, SNS, Lambda, ECR, Secrets Manager
-   │        → cấp quyền thẳng, không cần assume role, không cần đổi identity
-   │
-   ├─ Chạy ngoài AWS (on-prem server, CI/CD, GitHub Actions)
-   │     → IAM Roles Anywhere (chứng chỉ X.509) hoặc OIDC identity provider
-   │
-   └─ Ứng dụng mobile/web cần credentials tạm để gọi thẳng S3/DynamoDB
-         → Cognito identity pool  (đổi token của user pool hoặc IdP lấy STS credentials)
-```
+
+- IAM Identity Center + permission set: thay cho IAM user ở từng account
+- IAM role gắn vào compute: instance profile, task role, execution role, IRSA hoặc EKS Pod Identity. KHÔNG bao giờ là access key trong file
+- Nếu A là BÊN THỨ BA → bắt buộc thêm sts:ExternalId (chống confused deputy)
+- Resource-based policy: cấp quyền thẳng, không cần assume role, không cần đổi identity
+- Cognito identity pool: đổi token của user pool hoặc IdP lấy STS credentials
 
 **Quy tắc một dòng:** explicit Deny thắng tất cả; quyền hiệu lực là **phần giao**
 của mọi lớp; SCP và permission boundary chỉ **cắt xuống**, không bao giờ cộng thêm.
@@ -667,23 +728,30 @@ buộc**. Chi tiết ở [`05-security.md`](05-security.md).
 
 **Câu hỏi loại nửa: ai phải giữ và quay vòng key?**
 
+```mermaid
+flowchart TD
+    Q["Ai kiểm soát key?"]
+    S1["SSE-S3 (AES-256, mặc định cho mọi object mới)"]
+    S2["SSE-KMS"]
+    K1["AWS managed key (aws/s3, aws/rds...)"]
+    K2["Customer managed key"]
+    S3["SSE-C"]
+    S4["client-side encryption"]
+    S5["CloudHSM"]
+    Q -->|"AWS lo hết"| S1
+    Q -->|"Muốn kiểm soát và audit, vẫn để AWS giữ vật liệu key"| S2
+    S2 --> K1
+    S2 --> K2
+    Q -->|"Tự giữ key, gửi kèm mỗi request"| S3
+    Q -->|"Mã hoá TRƯỚC khi gửi lên"| S4
+    Q -->|"Luật bắt buộc HSM đơn nhiệm, FIPS 140-3 Level 3"| S5
 ```
-Ai kiểm soát key?
-│
-├─ AWS lo hết  → SSE-S3 (AES-256, mặc định cho mọi object mới)
-│     Không audit được từng lần dùng key, không đặt được policy trên key
-│
-├─ Muốn kiểm soát và audit, vẫn để AWS giữ vật liệu key  → SSE-KMS
-│  ├─ AWS managed key (aws/s3, aws/rds...) → bật một nút, không có policy riêng
-│  └─ Customer managed key → tự đặt key policy, rotation hằng năm, thấy từng
-│     lệnh gọi trong CloudTrail, xoá được sau 7–30 ngày
-│     Hiệu năng: mỗi object là một lần gọi KMS — bật S3 Bucket Keys để giảm tiền
-│
-├─ Tự giữ key, gửi kèm mỗi request  → SSE-C (mất key là mất dữ liệu, bắt buộc HTTPS)
-├─ Mã hoá TRƯỚC khi gửi lên         → client-side encryption
-└─ Luật bắt buộc HSM đơn nhiệm, FIPS 140-3 Level 3
-      → CloudHSM (AWS không có quyền vào; mất key là mất thật)
-```
+
+- SSE-S3: không audit được từng lần dùng key, không đặt được policy trên key
+- AWS managed key: bật một nút, không có policy riêng
+- Customer managed key: tự đặt key policy, rotation hằng năm, thấy từng lệnh gọi trong CloudTrail, xoá được sau 7–30 ngày. Hiệu năng: mỗi object là một lần gọi KMS — bật S3 Bucket Keys để giảm tiền
+- SSE-C: mất key là mất dữ liệu, bắt buộc HTTPS
+- CloudHSM: AWS không có quyền vào; mất key là mất thật
 
 **Nhận diện nhanh:** "audit every use of the key" hoặc "control who can use the key"
 → SSE-KMS với customer managed key. "Keys must never be stored in AWS" → SSE-C hoặc
@@ -696,18 +764,25 @@ client-side. "Single-tenant HSM", "FIPS 140-3 Level 3" → CloudHSM. Bảng đ�
 
 **Câu hỏi loại nửa: đề đang phân phối theo TỈ LỆ, theo VỊ TRÍ, hay theo TRẠNG THÁI SỐNG CHẾT?**
 
-```
-Mục tiêu định tuyến?
-│
-├─ Một tài nguyên duy nhất, không có gì phức tạp     → Simple
-├─ Chia traffic theo phần trăm (canary, blue/green,
-│  "migrate 10% of traffic gradually")               → Weighted
-├─ Cho người dùng tới endpoint NHANH NHẤT về mạng    → Latency-based
-├─ Ràng buộc pháp lý / nội dung theo QUỐC GIA        → Geolocation
-├─ Kéo lệch traffic khỏi một Region theo bias        → Geoproximity (cần Traffic Flow)
-├─ Chính chết thì chuyển sang dự phòng               → Failover (+ health check)
-├─ Trả nhiều IP, tự loại IP chết, cân bằng thô ở DNS → Multivalue answer
-└─ Trả lời theo mạng của ISP người dùng              → IP-based
+```mermaid
+flowchart TD
+    Q["Mục tiêu định tuyến?"]
+    A1["Simple"]
+    A2["Weighted"]
+    A3["Latency-based"]
+    A4["Geolocation"]
+    A5["Geoproximity (cần Traffic Flow)"]
+    A6["Failover (+ health check)"]
+    A7["Multivalue answer"]
+    A8["IP-based"]
+    Q -->|"Một tài nguyên duy nhất, không có gì phức tạp"| A1
+    Q -->|"Chia traffic theo phần trăm (canary, blue/green)"| A2
+    Q -->|"Cho người dùng tới endpoint NHANH NHẤT về mạng"| A3
+    Q -->|"Ràng buộc pháp lý / nội dung theo QUỐC GIA"| A4
+    Q -->|"Kéo lệch traffic khỏi một Region theo bias"| A5
+    Q -->|"Chính chết thì chuyển sang dự phòng"| A6
+    Q -->|"Trả nhiều IP, tự loại IP chết, cân bằng thô ở DNS"| A7
+    Q -->|"Trả lời theo mạng của ISP người dùng"| A8
 ```
 
 **Cặp bị nhầm nhiều nhất:** Latency-based chọn theo **đo đạc mạng thực tế**;

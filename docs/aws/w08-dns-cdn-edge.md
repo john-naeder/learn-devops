@@ -25,36 +25,23 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    U["người dùng gõ shop.example.com"]
+    R53["ROUTE 53 — quyết định TRẢ VỀ ĐỊA CHỈ NÀO"]
+    CF["CLOUDFRONT — TẦNG BIÊN, LAYER 7, CÓ CACHE"]
+    OR["S3 (OAC) / ALB / EC2 / custom origin bất kỳ"]
+    U --> R53
+    R53 -->|"trả về: d111.cloudfront.net (Alias)"| CF
+    CF --> OR
 ```
-người dùng gõ  shop.example.com
-       │
-       ▼
-┌──────────────────────────────────────────────────────────────┐
-│ ROUTE 53 — quyết định TRẢ VỀ ĐỊA CHỈ NÀO                     │
-│  hosted zone (public / private)                              │
-│  record: A / AAAA / CNAME / MX / TXT / NS / ALIAS            │
-│  routing policy: simple weighted latency failover            │
-│                  geolocation geoproximity multivalue         │
-│  health check ──► DNS failover                               │
-│  TTL quyết định BAO LÂU client mới hỏi lại                   │
-└───────────────────────┬──────────────────────────────────────┘
-                        │ trả về: d111.cloudfront.net (Alias)
-                        ▼
-┌──────────────────────────────────────────────────────────────┐
-│ CLOUDFRONT — TẦNG BIÊN, LAYER 7, CÓ CACHE                    │
-│   edge location (600+)  ──miss──►  regional edge cache        │
-│                                       ──miss──►  ORIGIN       │
-│   cache key ← path + header/cookie/query bạn CHỌN            │
-│   OAC khoá origin  │  signed URL/cookie  │  geo restriction   │
-│   CloudFront Functions (viewer)  |  Lambda@Edge (cả 4 sự kiện)│
-│   WAF gắn ở đây (scope CLOUDFRONT, tạo ở us-east-1)          │
-│   ACM cert BẮT BUỘC ở us-east-1                              │
-└───────────────────────┬──────────────────────────────────────┘
-                        ▼
-              S3 (OAC) │ ALB │ EC2 │ custom origin bất kỳ
 
-   Cần TCP/UDP không phải HTTP, cần 2 IP tĩnh?  → GLOBAL ACCELERATOR
-   (layer 4, anycast, KHÔNG cache — nó tối ưu đường đi, không tối ưu nội dung)
+- ROUTE 53: hosted zone (public / private) · record: A / AAAA / CNAME / MX / TXT / NS / ALIAS · routing policy: simple weighted latency failover geolocation geoproximity multivalue · health check → DNS failover · TTL quyết định BAO LÂU client mới hỏi lại
+- CLOUDFRONT: edge location (600+) → (miss) → regional edge cache → (miss) → ORIGIN · cache key ← path + header/cookie/query bạn CHỌN · OAC khoá origin | signed URL/cookie | geo restriction · CloudFront Functions (viewer) | Lambda@Edge (cả 4 sự kiện) · WAF gắn ở đây (scope CLOUDFRONT, tạo ở us-east-1) · ACM cert BẮT BUỘC ở us-east-1
+
+```
+Cần TCP/UDP không phải HTTP, cần 2 IP tĩnh?  → GLOBAL ACCELERATOR
+(layer 4, anycast, KHÔNG cache — nó tối ưu đường đi, không tối ưu nội dung)
 ```
 
 ---
@@ -212,14 +199,15 @@ record trỏ tới ELB/CloudFront thì TTL do AWS quản lý — bớt được 
 
 Hai tầng cache, và người ta hay chỉ nhớ tầng đầu:
 
-```
-viewer ──► EDGE LOCATION (600+ PoP, gần người dùng nhất)
-              │ miss
-              ▼
-           REGIONAL EDGE CACHE (mid-tier, dung lượng lớn hơn, ít hơn về số lượng)
-              │ miss
-              ▼
-           ORIGIN (S3 / ALB / EC2 / server bất kỳ)
+```mermaid
+flowchart TD
+    V["viewer"]
+    E["EDGE LOCATION (600+ PoP, gần người dùng nhất)"]
+    R["REGIONAL EDGE CACHE (mid-tier, dung lượng lớn hơn, ít hơn về số lượng)"]
+    O["ORIGIN (S3 / ALB / EC2 / server bất kỳ)"]
+    V --> E
+    E -->|"miss"| R
+    R -->|"miss"| O
 ```
 
 Regional edge cache tồn tại để **gộp request**: nhiều edge location cùng miss một
@@ -341,11 +329,15 @@ CloudFront, không phải presigned URL của S3.
 
 Bốn điểm chèn code trong vòng đời một request CloudFront:
 
-```
-viewer ──1──► [EDGE] ──2──► [cache] ──3──► ORIGIN
-       ◄──4── [EDGE] ◄─────────────── ◄────
-  1 viewer request   2 origin request
-  4 viewer response  3 origin response
+```mermaid
+sequenceDiagram
+    participant V as viewer
+    participant E as EDGE
+    participant O as ORIGIN
+    V->>E: 1 viewer request
+    E->>O: 2 origin request
+    O-->>E: 3 origin response
+    E-->>V: 4 viewer response
 ```
 
 | | **CloudFront Functions** | **Lambda@Edge** |

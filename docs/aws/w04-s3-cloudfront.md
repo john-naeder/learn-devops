@@ -21,32 +21,29 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    U["Người dùng cuối"]
+    CF["CloudFront"]
+    S3["S3 BUCKET"]
+    LC["Standard → IA → Glacier IR → Glacier Flexible → Deep Archive"]
+    RP["CRR (region khác) / SRR (cùng region)"]
+    EV["Lambda / SQS / SNS / EventBridge"]
+    U -->|"HTTPS"| CF
+    CF -->|"OAC"| S3
+    S3 -->|"lifecycle"| LC
+    S3 -->|"replication"| RP
+    S3 -->|"event notification"| EV
 ```
-                          Người dùng cuối
-                                │ HTTPS
-                    ┌───────────▼────────────┐
-                    │      CloudFront        │ cache ở edge · cache behavior + TTL
-                    └───────────┬────────────┘ 1 TB egress/tháng always free
-                                │ OAC — ký SigV4 bằng service principal
-                                │ cloudfront.amazonaws.com + AWS:SourceArn
-        ┌───────────────────────▼──────────────────────────┐
-        │                  S3 BUCKET                       │
-        │  Block Public Access: 4/4 BẬT                    │
-        │  Ai được vào: IAM policy ⋃ bucket policy          │
-        │               ACL (cũ, nên tắt) ∩ BPA             │
-        │               explicit DENY thắng tất cả          │
-        │                                                  │
-        │  object = key + data + metadata + storage class   │
-        │  KHÔNG có thư mục — chỉ có prefix                 │
-        │  versioning: [v3 current][v2][v1]                 │
-        │  encryption: SSE-S3 · SSE-KMS · SSE-C · CSE       │
-        └───┬───────────────┬───────────────┬──────────────┘
-            │ lifecycle     │ replication   │ event notification
-            ▼               ▼               ▼
-  Standard → IA →      CRR (region khác)  Lambda / SQS / SNS / EventBridge
-  Glacier IR →         SRR (cùng region)
-  Glacier Flexible → Deep Archive
-```
+
+- CloudFront: cache ở edge · cache behavior + TTL · 1 TB egress/tháng always free
+- OAC — ký SigV4 bằng service principal cloudfront.amazonaws.com + AWS:SourceArn
+- S3 bucket: Block Public Access: 4/4 BẬT
+- Ai được vào: IAM policy ⋃ bucket policy · ACL (cũ, nên tắt) ∩ BPA · explicit DENY thắng tất cả
+- object = key + data + metadata + storage class
+- KHÔNG có thư mục — chỉ có prefix
+- versioning: [v3 current][v2][v1]
+- encryption: SSE-S3 · SSE-KMS · SSE-C · CSE
 
 ---
 

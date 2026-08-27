@@ -25,32 +25,45 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    subgraph VPC["VPC 10.0.0.0/16"]
+        DNS["enableDnsSupport=true, enableDnsHostnames=true — Amazon DNS resolver tại 10.0.0.2 (base + 2) và 169.254.169.253"]
+        subgraph AZA["AZ us-east-1a"]
+            PUBA["public 10.0.0.0/24 — route table: 0.0.0.0/0 → IGW"]
+            PRIA["private 10.0.10.0/24 — route table: chỉ có local"]
+        end
+        subgraph AZB["AZ us-east-1b"]
+            PUBB["public 10.0.1.0/24 — route table: 0.0.0.0/0 → IGW"]
+            PRIB["private 10.0.11.0/24 — không route ra internet"]
+        end
+    end
 ```
-  VPC 10.0.0.0/16  ──────────────────────────────────────────────────────────
-  │  enableDnsSupport=true   enableDnsHostnames=true
-  │  Amazon DNS resolver tại 10.0.0.2 (base + 2) và 169.254.169.253
-  │
-  ├─ AZ us-east-1a ──────────────────┬─ AZ us-east-1b ──────────────────┐
-  │   public  10.0.0.0/24            │   public  10.0.1.0/24            │
-  │     route table: 0.0.0.0/0 → IGW │     route table: 0.0.0.0/0 → IGW │
-  │     ↑ đây LÀ định nghĩa "public" │                                  │
-  │                                  │                                  │
-  │   private 10.0.10.0/24           │   private 10.0.11.0/24           │
-  │     route table: chỉ có local    │     (không route ra internet)    │
-  └──────────────────────────────────┴──────────────────────────────────┘
-  │
-  ├─ Internet Gateway (IGW)        1 cái / VPC, không băng thông giới hạn, free
-  ├─ NAT Gateway                   trong PUBLIC subnet, $$$  ← kẻ giết credit số 1
-  ├─ Gateway Endpoint (S3, DDB)    chèn prefix list vào route table   MIỄN PHÍ
-  ├─ Interface Endpoint            tạo ENI trong subnet              $0,01/giờ/AZ
-  ├─ VPC Peering                   1-1, KHÔNG transitive
-  └─ Transit Gateway               hub-and-spoke, transitive, $$$
 
-  Lớp lọc gói tin — hai lớp, hoạt động khác hẳn nhau:
+Route table `0.0.0.0/0 → IGW` chính LÀ định nghĩa "public".
 
-     packet ──► NACL (mức SUBNET, stateless, có DENY, xét theo số thứ tự)
-                  └──► Security Group (mức ENI, stateful, chỉ ALLOW, xét tất cả)
-                         └──► ENI ──► instance
+Các thành phần gắn vào VPC:
+
+- Internet Gateway (IGW) — 1 cái / VPC, không băng thông giới hạn, free
+- NAT Gateway — trong PUBLIC subnet, $$$ ← kẻ giết credit số 1
+- Gateway Endpoint (S3, DDB) — chèn prefix list vào route table, MIỄN PHÍ
+- Interface Endpoint — tạo ENI trong subnet, $0,01/giờ/AZ
+- VPC Peering — 1-1, KHÔNG transitive
+- Transit Gateway — hub-and-spoke, transitive, $$$
+
+Lớp lọc gói tin — hai lớp, hoạt động khác hẳn nhau:
+
+```mermaid
+flowchart LR
+    P["packet"]
+    N["NACL (mức SUBNET, stateless, có DENY, xét theo số thứ tự)"]
+    S["Security Group (mức ENI, stateful, chỉ ALLOW, xét tất cả)"]
+    E["ENI"]
+    I["instance"]
+    P --> N
+    N --> S
+    S --> E
+    E --> I
 ```
 
 ---

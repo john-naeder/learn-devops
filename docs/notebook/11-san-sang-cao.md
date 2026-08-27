@@ -89,30 +89,35 @@ con số này để bẫy.
 SPOF là bất kỳ thành phần nào mà **mất nó thì cả hệ thống ngừng**. Cách rà nhanh:
 đi dọc đường đi của một request và hỏi "cái này có mấy cái?".
 
+```mermaid
+flowchart TD
+    U["Người dùng"]
+    D["DNS — Route 53"]
+    C["CDN — CloudFront"]
+    L["Load balancer — ALB/NLB"]
+    K["Compute — EC2 trong ASG"]
+    S["State/session"]
+    B["Database"]
+    T["Storage"]
+    P["Phụ thuộc ngoài"]
+    U --> D
+    D --> C
+    C --> L
+    L --> K
+    K --> S
+    S --> B
+    B --> T
+    T --> P
 ```
-Người dùng
-   │
-   ▼ DNS          Route 53 — global, AWS lo. KHÔNG phải SPOF của bạn.
-   │              (SPOF nếu bạn tự chạy DNS trên một EC2)
-   ▼ CDN          CloudFront — global. Không SPOF.
-   │
-   ▼ Load balancer  ALB/NLB — CÓ node ở mỗi AZ bạn bật subnet.
-   │                SPOF nếu bạn chỉ bật MỘT subnet.  ← lỗi hay gặp
-   │
-   ▼ Compute      EC2 trong ASG — SPOF nếu min=1, hoặc nếu ASG chỉ có subnet 1 AZ.
-   │              SPOF nếu instance chạy ngoài ASG.   ← lỗi hay gặp
-   │
-   ▼ State/session  SPOF nếu session nằm trên đĩa local của instance.  ← lỗi hay gặp
-   │
-   ▼ Database     RDS single-AZ = SPOF. RDS Multi-AZ = không.
-   │              NHƯNG: read replica KHÔNG phải HA cho writer.        ← bẫy
-   │
-   ▼ Storage      EBS gắn 1 AZ = SPOF cho instance đó.
-   │              EFS/S3 = trải nhiều AZ, không SPOF.
-   │
-   ▼ Phụ thuộc ngoài  NAT Gateway đơn = SPOF cho mọi outbound của private subnet.
-                      Interface endpoint chỉ ở 1 AZ = SPOF.            ← lỗi hay gặp
-```
+
+- DNS — Route 53: global, AWS lo. KHÔNG phải SPOF của bạn. (SPOF nếu bạn tự chạy DNS trên một EC2)
+- CDN — CloudFront: global. Không SPOF.
+- Load balancer — ALB/NLB: CÓ node ở mỗi AZ bạn bật subnet. SPOF nếu bạn chỉ bật MỘT subnet. ← lỗi hay gặp
+- Compute — EC2 trong ASG: SPOF nếu min=1, hoặc nếu ASG chỉ có subnet 1 AZ. SPOF nếu instance chạy ngoài ASG. ← lỗi hay gặp
+- State/session: SPOF nếu session nằm trên đĩa local của instance. ← lỗi hay gặp
+- Database: RDS single-AZ = SPOF. RDS Multi-AZ = không. NHƯNG: read replica KHÔNG phải HA cho writer. ← bẫy
+- Storage: EBS gắn 1 AZ = SPOF cho instance đó. EFS/S3 = trải nhiều AZ, không SPOF.
+- Phụ thuộc ngoài: NAT Gateway đơn = SPOF cho mọi outbound của private subnet. Interface endpoint chỉ ở 1 AZ = SPOF. ← lỗi hay gặp
 
 Sáu SPOF mà đề thi cài nhiều nhất:
 
@@ -516,29 +521,46 @@ Ba chỗ điều này ra thi:
 
 **Chọn cơ chế HA cho database:**
 
-```
-Engine gì?
-├── MySQL/PostgreSQL/MariaDB/Oracle/SQL Server (RDS)
-│   ├── Chỉ cần HA, failover 1–2 phút chấp nhận được ──► Multi-AZ instance deployment
-│   ├── Cần failover dưới 1 phút + standby đọc được ──► Multi-AZ DB cluster (MySQL/PostgreSQL)
-│   └── Cần scale đọc ──────────────────────────────► + Read replica (KHÔNG thay Multi-AZ)
-├── MySQL/PostgreSQL, cần hiệu năng và HA tốt hơn ──► Aurora (≥1 reader ở AZ khác)
-├── Cần chịu mất Region ────────────────────────────► Aurora Global Database
-├── NoSQL key-value ────────────────────────────────► DynamoDB (đã 3 AZ sẵn)
-└── Cache
-    ├── Cần HA, cần persistence, cần replication ───► ElastiCache Redis + Multi-AZ failover
-    └── Cache đơn giản, mất được ───────────────────► ElastiCache Memcached
+```mermaid
+flowchart TD
+    Q["Engine gì?"]
+    R["MySQL/PostgreSQL/MariaDB/Oracle/SQL Server (RDS)"]
+    R1["Multi-AZ instance deployment"]
+    R2["Multi-AZ DB cluster (MySQL/PostgreSQL)"]
+    R3["+ Read replica (KHÔNG thay Multi-AZ)"]
+    A["Aurora (ít nhất 1 reader ở AZ khác)"]
+    G["Aurora Global Database"]
+    D["DynamoDB (đã 3 AZ sẵn)"]
+    C["Cache"]
+    C1["ElastiCache Redis + Multi-AZ failover"]
+    C2["ElastiCache Memcached"]
+    Q --> R
+    R -->|"Chỉ cần HA, failover 1–2 phút chấp nhận được"| R1
+    R -->|"Cần failover dưới 1 phút + standby đọc được"| R2
+    R -->|"Cần scale đọc"| R3
+    Q -->|"MySQL/PostgreSQL, cần hiệu năng và HA tốt hơn"| A
+    Q -->|"Cần chịu mất Region"| G
+    Q -->|"NoSQL key-value"| D
+    Q --> C
+    C -->|"Cần HA, cần persistence, cần replication"| C1
+    C -->|"Cache đơn giản, mất được"| C2
 ```
 
 **Chọn cơ chế decoupling:**
 
-```
-Cần gì?
-├── Đệm tải, retry, một message một consumer ─────► SQS
-├── Một sự kiện, nhiều bên xử lý ─────────────────► SNS (+ SQS mỗi bên nếu cần đệm)
-├── Routing theo nội dung, tích hợp SaaS, lịch ───► EventBridge
-├── Thứ tự + đọc lại được nhiều lần ──────────────► Kinesis Data Streams
-└── Workflow nhiều bước, cần thấy trạng thái ─────► Step Functions
+```mermaid
+flowchart TD
+    Q["Cần gì?"]
+    A1["SQS"]
+    A2["SNS (+ SQS mỗi bên nếu cần đệm)"]
+    A3["EventBridge"]
+    A4["Kinesis Data Streams"]
+    A5["Step Functions"]
+    Q -->|"Đệm tải, retry, một message một consumer"| A1
+    Q -->|"Một sự kiện, nhiều bên xử lý"| A2
+    Q -->|"Routing theo nội dung, tích hợp SaaS, lịch"| A3
+    Q -->|"Thứ tự + đọc lại được nhiều lần"| A4
+    Q -->|"Workflow nhiều bước, cần thấy trạng thái"| A5
 ```
 
 ---

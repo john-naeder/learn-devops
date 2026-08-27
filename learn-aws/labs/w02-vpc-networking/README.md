@@ -70,24 +70,37 @@ cd terraform && eval "$(terraform output -raw ssm_session_command)"
 
 ## Hạ tầng
 
+```mermaid
+flowchart TD
+    V["VPC 10.0.0.0/16"]
+    P1["public 10.0.0.0/24 (us-east-1a)"]
+    P2["public 10.0.1.0/24 (us-east-1b)"]
+    IGW["route 0.0.0.0/0 → Internet Gateway"]
+    R1["private 10.0.10.0/24 (us-east-1a)"]
+    R2["private 10.0.11.0/24 (us-east-1b)"]
+    GE["S3 + DynamoDB Gateway Endpoint"]
+    IE["ssm/ssmmessages/ec2messages (Interface Endpoint, chỉ 1 AZ)"]
+    NA["NACL chặn port 8080"]
+    FL["Flow Logs → CloudWatch (giữ 1 ngày)"]
+    V --> P1
+    V --> P2
+    P1 --> IGW
+    P2 --> IGW
+    V --> R1
+    V --> R2
+    V --> GE
+    V --> IE
+    V --> NA
+    V --> FL
 ```
-VPC 10.0.0.0/16
-│
-├── public  10.0.0.0/24  (us-east-1a)  ─┐
-├── public  10.0.1.0/24  (us-east-1b)  ─┴─→ route 0.0.0.0/0 → Internet Gateway
-│
-├── private 10.0.10.0/24 (us-east-1a)  ─┐  KHÔNG có route ra internet
-├── private 10.0.11.0/24 (us-east-1b)  ─┘
-│
-├── S3 + DynamoDB Gateway Endpoint      MIỄN PHÍ
-├── ssm/ssmmessages/ec2messages         ~$0,03/giờ  ← chỗ tốn tiền
-│   (Interface Endpoint, chỉ 1 AZ)
-├── NACL chặn port 8080                 sinh REJECT cho Flow Logs
-└── Flow Logs → CloudWatch (giữ 1 ngày)
+
+- private subnet KHÔNG có route ra internet
+- S3 + DynamoDB Gateway Endpoint: MIỄN PHÍ
+- ssm/ssmmessages/ec2messages: ~$0,03/giờ ← chỗ tốn tiền
+- NACL chặn port 8080: sinh REJECT cho Flow Logs
 
 EC2 t3.micro trong private subnet:
   không public IP · không SSH key · SG không có rule inbound nào · IMDSv2 bắt buộc
-```
 
 ---
 

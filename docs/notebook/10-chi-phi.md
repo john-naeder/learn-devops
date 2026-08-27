@@ -166,27 +166,39 @@ thủ → Dedicated Instance** (rẻ hơn).
 
 ### Cây quyết định mua compute
 
-```
-Tải này có chạy đủ lâu và đủ đều để cam kết 1 năm không?
-├── KHÔNG (dự án ngắn, thử nghiệm, tải thất thường)
-│   ├── Chịu được bị thu hồi giữa chừng? ──► SPOT
-│   └── Không chịu được ──────────────────► ON-DEMAND
-│
-└── CÓ
-    ├── Cần đảm bảo có máy trong một AZ cụ thể?
-    │   └── CÓ ──────────────────► ZONAL RI hoặc On-Demand Capacity Reservation
-    │
-    ├── Có giấy phép BYOL tính theo socket/core?
-    │   └── CÓ ──────────────────► DEDICATED HOST (mua Host Reservation)
-    │
-    ├── Tải có cả EC2 + Fargate + Lambda, hoặc sẽ đổi family/Region?
-    │   └── CÓ ──────────────────► COMPUTE SAVINGS PLANS
-    │
-    ├── Chắc chắn ở lại một family, một Region, muốn giảm giá tối đa?
-    │   └── CÓ ──────────────────► EC2 INSTANCE SAVINGS PLANS (hoặc Standard RI)
-    │
-    └── Cần bán lại được nếu kế hoạch thay đổi?
-        └── CÓ ──────────────────► STANDARD RI (RI Marketplace)
+```mermaid
+flowchart TD
+    Q["Tải này có chạy đủ lâu và đủ đều để cam kết 1 năm không?"]
+    N["KHÔNG (dự án ngắn, thử nghiệm, tải thất thường)"]
+    Q1["Chịu được bị thu hồi giữa chừng?"]
+    SPOT["SPOT"]
+    OD["ON-DEMAND"]
+    Y["CÓ"]
+    Y1["Cần đảm bảo có máy trong một AZ cụ thể?"]
+    Y2["Có giấy phép BYOL tính theo socket/core?"]
+    Y3["Tải có cả EC2 + Fargate + Lambda, hoặc sẽ đổi family/Region?"]
+    Y4["Chắc chắn ở lại một family, một Region, muốn giảm giá tối đa?"]
+    Y5["Cần bán lại được nếu kế hoạch thay đổi?"]
+    A1["ZONAL RI hoặc On-Demand Capacity Reservation"]
+    A2["DEDICATED HOST (mua Host Reservation)"]
+    A3["COMPUTE SAVINGS PLANS"]
+    A4["EC2 INSTANCE SAVINGS PLANS (hoặc Standard RI)"]
+    A5["STANDARD RI (RI Marketplace)"]
+    Q --> N
+    N --> Q1
+    Q1 -->|"Chịu được"| SPOT
+    Q1 -->|"Không chịu được"| OD
+    Q --> Y
+    Y --> Y1
+    Y --> Y2
+    Y --> Y3
+    Y --> Y4
+    Y --> Y5
+    Y1 -->|"CÓ"| A1
+    Y2 -->|"CÓ"| A2
+    Y3 -->|"CÓ"| A3
+    Y4 -->|"CÓ"| A4
+    Y5 -->|"CÓ"| A5
 ```
 
 **Mẫu kiến trúc mà đề thi coi là "đúng" nhất:** đường nền 24/7 mua bằng Savings
@@ -441,10 +453,29 @@ từ file này, nhớ cái này.
 
 Instance ở private subnet cần đọc/ghi S3. Có ba đường đi:
 
-```
-(A) private subnet ──► route 0.0.0.0/0 ──► NAT Gateway ──► Internet Gateway ──► S3
-(B) private subnet ──► route tới prefix list của S3 ──► Gateway Endpoint ──► S3
-(C) private subnet ──► ENI của Interface Endpoint (PrivateLink) ──► S3
+```mermaid
+flowchart LR
+    PA["(A) private subnet"]
+    RA["route 0.0.0.0/0"]
+    NAT["NAT Gateway"]
+    IGW["Internet Gateway"]
+    S3A["S3"]
+    PB["(B) private subnet"]
+    RB["route tới prefix list của S3"]
+    GE["Gateway Endpoint"]
+    S3B["S3"]
+    PC["(C) private subnet"]
+    EN["ENI của Interface Endpoint (PrivateLink)"]
+    S3C["S3"]
+    PA --> RA
+    RA --> NAT
+    NAT --> IGW
+    IGW --> S3A
+    PB --> RB
+    RB --> GE
+    GE --> S3B
+    PC --> EN
+    EN --> S3C
 ```
 
 Cả ba đều chạy. Giá thì không giống nhau chút nào.
@@ -651,31 +682,48 @@ Giá tham chiếu `us-east-1`, tính đến **2026-08**.
 
 **Chọn storage class cho object:**
 
-```
-Truy cập bao lâu một lần?
-├── Nhiều lần/ngày ─────────────────────► S3 Standard
-├── Không biết / thay đổi ──────────────► Intelligent-Tiering  (nếu object > 128 KB)
-├── ~1 lần/tháng hoặc thưa hơn
-│   ├── Object < 70 KB ─────────────────► giữ ở Standard (IA đắt hơn)
-│   ├── Tái tạo được nếu mất ───────────► One Zone-IA
-│   └── Không tái tạo được ─────────────► Standard-IA
-├── ~1 lần/quý, cần lấy ra tức thì ─────► Glacier Instant Retrieval
-├── ~1–2 lần/năm, chờ được vài giờ ─────► Glacier Flexible Retrieval
-└── Gần như không bao giờ, chờ được 1 ngày ► Glacier Deep Archive
-                                            (kiểm tra object > ~400 KB trước)
+```mermaid
+flowchart TD
+    Q["Truy cập bao lâu một lần?"]
+    A1["S3 Standard"]
+    A2["Intelligent-Tiering (nếu object trên 128 KB)"]
+    M["~1 lần/tháng hoặc thưa hơn"]
+    M1["giữ ở Standard (IA đắt hơn)"]
+    M2["One Zone-IA"]
+    M3["Standard-IA"]
+    A3["Glacier Instant Retrieval"]
+    A4["Glacier Flexible Retrieval"]
+    A5["Glacier Deep Archive (kiểm tra object trên ~400 KB trước)"]
+    Q -->|"Nhiều lần/ngày"| A1
+    Q -->|"Không biết / thay đổi"| A2
+    Q --> M
+    M -->|"Object dưới 70 KB"| M1
+    M -->|"Tái tạo được nếu mất"| M2
+    M -->|"Không tái tạo được"| M3
+    Q -->|"~1 lần/quý, cần lấy ra tức thì"| A3
+    Q -->|"~1–2 lần/năm, chờ được vài giờ"| A4
+    Q -->|"Gần như không bao giờ, chờ được 1 ngày"| A5
 ```
 
 **Chọn cách nối private subnet ra ngoài:**
 
-```
-Đích đến là gì?
-├── S3 hoặc DynamoDB, từ chính VPC này ──► GATEWAY ENDPOINT  ($0)
-├── Dịch vụ AWS khác, hoặc từ on-prem/VPC khác ──► INTERFACE ENDPOINT
-├── Internet công cộng
-│   ├── Cần HA ──────────────────────────► NAT Gateway MỖI AZ
-│   ├── Dev, tối ưu tiền tuyệt đối ──────► 1 NAT Gateway (chấp nhận SPOF + phí cross-AZ)
-│   └── Khối lượng rất nhỏ, chấp nhận tự vận hành ──► NAT Instance
-└── Chỉ cần nhận traffic vào, không cần ra ──► không cần gì cả
+```mermaid
+flowchart TD
+    Q["Đích đến là gì?"]
+    A1["GATEWAY ENDPOINT ($0)"]
+    A2["INTERFACE ENDPOINT"]
+    I["Internet công cộng"]
+    I1["NAT Gateway MỖI AZ"]
+    I2["1 NAT Gateway (chấp nhận SPOF + phí cross-AZ)"]
+    I3["NAT Instance"]
+    A3["không cần gì cả"]
+    Q -->|"S3 hoặc DynamoDB, từ chính VPC này"| A1
+    Q -->|"Dịch vụ AWS khác, hoặc từ on-prem/VPC khác"| A2
+    Q --> I
+    I -->|"Cần HA"| I1
+    I -->|"Dev, tối ưu tiền tuyệt đối"| I2
+    I -->|"Khối lượng rất nhỏ, chấp nhận tự vận hành"| I3
+    Q -->|"Chỉ cần nhận traffic vào, không cần ra"| A3
 ```
 
 ---

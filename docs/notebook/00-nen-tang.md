@@ -29,22 +29,35 @@ rồi đọc [`21-tu-khoa-de-thi.md`](21-tu-khoa-de-thi.md).
 
 ## 1. Địa lý AWS — cái nào ra thi, cái nào không
 
+```mermaid
+flowchart TD
+    P["Partition: aws / aws-cn / aws-us-gov"]
+    R1["Region us-east-1"]
+    R2["Region eu-west-1"]
+    AZ1["AZ us-east-1a (AZ ID use1-az4)"]
+    AZ2["AZ us-east-1b (AZ ID use1-az1)"]
+    AZ3["AZ us-east-1c (AZ ID use1-az2)"]
+    LZ["Local Zone us-east-1-bos-1"]
+    WZ["Wavelength Zone (trong mạng 5G của telco)"]
+    ED["Edge network (TÁCH RỜI Region)"]
+    E1["Edge location / PoP — CloudFront, Route 53, Global Accelerator, WAF, Shield"]
+    E2["Regional Edge Cache — tầng cache thứ hai của CloudFront"]
+    P --> R1
+    P --> R2
+    P --> ED
+    R1 --> AZ1
+    R1 --> AZ2
+    R1 --> AZ3
+    R1 --> LZ
+    R1 --> WZ
+    ED --> E1
+    ED --> E2
 ```
-   Partition  aws | aws-cn | aws-us-gov      ← IAM ARN bắt đầu bằng đây; không cross partition
-        │
-        ├── Region us-east-1 ─────────────────────────────────┐
-        │      ├── AZ  us-east-1a  (AZ ID use1-az4)           │  cô lập điện/làm mát/mạng
-        │      ├── AZ  us-east-1b  (AZ ID use1-az1)           │  nối nhau bằng cáp riêng
-        │      ├── AZ  us-east-1c  (AZ ID use1-az2)           │  RTT thường 1–2 ms
-        │      └── Local Zone us-east-1-bos-1                 │  phần mở rộng của Region
-        │      └── Wavelength Zone (trong mạng 5G của telco)  │
-        │
-        ├── Region eu-west-1 ── cô lập hoàn toàn với us-east-1
-        │
-        └── Edge network (TÁCH RỜI Region)
-               ├── Edge location / PoP  — CloudFront, Route 53, Global Accelerator, WAF, Shield
-               └── Regional Edge Cache  — tầng cache thứ hai của CloudFront
-```
+
+- Partition: IAM ARN bắt đầu bằng đây; không cross partition
+- AZ: cô lập điện/làm mát/mạng, nối nhau bằng cáp riêng, RTT thường 1–2 ms
+- Local Zone: phần mở rộng của Region
+- Region eu-west-1: cô lập hoàn toàn với us-east-1
 
 ### Region — đơn vị cô lập lỗi lớn nhất
 
@@ -306,12 +319,27 @@ thuẫn, **ràng buộc cứng trong đề thắng**. Từ khóa ràng buộc c�
 
 ## 5. AWS là một tập API, mọi thứ khác là client
 
-```
-   Console ──┐
-   AWS CLI ──┤
-   SDK     ──┼──► HTTPS + SigV4 ──► API endpoint ──► IAM: Allow/Deny? ──► Control plane
-   Terraform ┤                            │
-   CDK / CFN ┘                            └──► CloudTrail ghi lại TOÀN BỘ
+```mermaid
+flowchart LR
+    C["Console"]
+    CLI["AWS CLI"]
+    SDK["SDK"]
+    TF["Terraform"]
+    CFN["CDK / CFN"]
+    H["HTTPS + SigV4"]
+    API["API endpoint"]
+    IAM["IAM: Allow/Deny?"]
+    CP["Control plane"]
+    CT["CloudTrail ghi lại TOÀN BỘ"]
+    C --> H
+    CLI --> H
+    SDK --> H
+    TF --> H
+    CFN --> H
+    H --> API
+    API --> IAM
+    IAM --> CP
+    API --> CT
 ```
 
 Đây không phải chuyện triết học, nó có ba hệ quả ra thi:

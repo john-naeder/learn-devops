@@ -50,41 +50,43 @@ Mẹo nhớ: **T**ime = **T**hời gian ngừng. **P**oint = **P**hần dữ li�
 
 ### Sơ đồ bốn cấp
 
+**BACKUP & RESTORE** — RTO: giờ-ngày · RPO: giờ · $
+
+```mermaid
+flowchart LR
+    A["Region chính — ĐANG CHẠY"] -->|"AWS Backup / S3 CRR"| B["Region phụ (trống)"]
 ```
-BACKUP & RESTORE                         RTO: giờ-ngày   RPO: giờ    $
-┌──────────────┐                         ┌──────────────┐
-│ Region chính │──── AWS Backup ────────▶│ Region phụ   │
-│  ĐANG CHẠY   │      S3 CRR             │  (trống)     │
-└──────────────┘                         └──────────────┘
+
 Khi sự cố: dựng lại toàn bộ từ IaC + khôi phục dữ liệu từ backup.
 
+**PILOT LIGHT** — RTO: chục phút · RPO: phút · $$
 
-PILOT LIGHT                              RTO: chục phút  RPO: phút   $$
-┌──────────────┐                         ┌──────────────┐
-│ Region chính │──── replication ───────▶│ RDS replica  │  đang chạy
-│  ĐANG CHẠY   │                         │ AMI + IaC    │  đã sẵn sàng
-└──────────────┘                         │ EC2/ASG: TẮT │
-                                         └──────────────┘
+```mermaid
+flowchart LR
+    A["Region chính — ĐANG CHẠY"] -->|"replication"| B["RDS replica đang chạy / AMI + IaC đã sẵn sàng / EC2-ASG: TẮT"]
+```
+
 Khi sự cố: promote replica, bật ASG lên, đổi DNS.
 
+**WARM STANDBY** — RTO: phút · RPO: giây · $$$
 
-WARM STANDBY                             RTO: phút       RPO: giây   $$$
-┌──────────────┐                         ┌──────────────┐
-│ Region chính │──── replication ───────▶│ Bản THU NHỎ  │
-│  ĐANG CHẠY   │                         │  ĐANG CHẠY   │
-│              │                         │  (1 máy)     │
-└──────────────┘                         └──────────────┘
+```mermaid
+flowchart LR
+    A["Region chính — ĐANG CHẠY"] -->|"replication"| B["Bản THU NHỎ ĐANG CHẠY (1 máy)"]
+```
+
 Khi sự cố: scale up rồi đổi DNS. Hệ thống đã sống sẵn, chỉ thiếu công suất.
 
+**MULTI-SITE ACTIVE/ACTIVE** — RTO: ~0 · RPO: ~0 · $$$$
 
-MULTI-SITE ACTIVE/ACTIVE                 RTO: ~0         RPO: ~0     $$$$
-┌──────────────┐                         ┌──────────────┐
-│ Region A     │◀─── 2 chiều ───────────▶│ Region B     │
-│ PHỤC VỤ THẬT │                         │ PHỤC VỤ THẬT │
-└──────┬───────┘                         └───────┬──────┘
-       └────── Route 53 latency/weighted ────────┘
-Khi sự cố: health check loại region hỏng. Người dùng gần như không nhận ra.
+```mermaid
+flowchart LR
+    A["Region A — PHỤC VỤ THẬT"] <-->|"2 chiều"| B["Region B — PHỤC VỤ THẬT"]
+    A --- R["Route 53 latency/weighted"]
+    R --- B
 ```
+
+Khi sự cố: health check loại region hỏng. Người dùng gần như không nhận ra.
 
 ### Cách đề thi hỏi
 

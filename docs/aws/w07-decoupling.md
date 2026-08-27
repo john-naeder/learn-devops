@@ -23,31 +23,48 @@
 
 ## Bản đồ khái niệm
 
+**TRỤC 1: AI LẤY MESSAGE?**
+
+| ĐẨY (push) | KÉO (pull) |
+|---|---|
+| SNS, EventBridge | SQS, Kinesis |
+| → consumer bị gọi | → consumer tự quyết nhịp độ |
+| → không có backpressure | → CÓ backpressure, đệm tải |
+
+**TRỤC 2: MỘT HAY NHIỀU NGƯỜI NHẬN?**
+
 ```
-                    TRỤC 1: AI LẤY MESSAGE?
-   ┌────────────────────────────┬────────────────────────────────┐
-   │  ĐẨY (push)                │  KÉO (pull)                    │
-   │  SNS, EventBridge          │  SQS, Kinesis                  │
-   │  → consumer bị gọi         │  → consumer tự quyết nhịp độ   │
-   │  → không có backpressure   │  → CÓ backpressure, đệm tải    │
-   └────────────────────────────┴────────────────────────────────┘
-
-                    TRỤC 2: MỘT HAY NHIỀU NGƯỜI NHẬN?
-   SQS      1 message → ĐÚNG MỘT consumer xử lý, rồi xoá
-   SNS      1 message → MỌI subscriber, mỗi người một bản
-   Kinesis  1 record  → MỌI consumer đọc CÙNG dữ liệu, và ĐỌC LẠI ĐƯỢC
-
-                    MẪU GHÉP KINH ĐIỂN: FANOUT
-   producer ──publish──► SNS topic ──┬─(filter)─► SQS A ──► consumer A
-                                     ├─(filter)─► SQS B ──► consumer B
-                                     └──────────► Lambda C
-   Vì sao chèn SQS vào giữa? Vì SNS đẩy thẳng vào Lambda thì consumer chậm =
-   mất message. Có SQS ở giữa thì message nằm chờ, retry được, có DLQ.
-
-                    KHI NÀO DÙNG EVENTBRIDGE THAY SNS?
-   Cần lọc theo NỘI DUNG event (không chỉ attribute), cần nhiều target khác
-   loại, cần bắt sự kiện từ chính AWS hoặc SaaS, cần archive/replay → EventBridge
+SQS      1 message → ĐÚNG MỘT consumer xử lý, rồi xoá
+SNS      1 message → MỌI subscriber, mỗi người một bản
+Kinesis  1 record  → MỌI consumer đọc CÙNG dữ liệu, và ĐỌC LẠI ĐƯỢC
 ```
+
+**MẪU GHÉP KINH ĐIỂN: FANOUT**
+
+```mermaid
+flowchart LR
+    P["producer"]
+    T["SNS topic"]
+    QA["SQS A"]
+    QB["SQS B"]
+    LC["Lambda C"]
+    CA["consumer A"]
+    CB["consumer B"]
+    P -->|"publish"| T
+    T -->|"filter"| QA
+    T -->|"filter"| QB
+    T --> LC
+    QA --> CA
+    QB --> CB
+```
+
+Vì sao chèn SQS vào giữa? Vì SNS đẩy thẳng vào Lambda thì consumer chậm =
+mất message. Có SQS ở giữa thì message nằm chờ, retry được, có DLQ.
+
+**KHI NÀO DÙNG EVENTBRIDGE THAY SNS?**
+
+Cần lọc theo NỘI DUNG event (không chỉ attribute), cần nhiều target khác
+loại, cần bắt sự kiện từ chính AWS hoặc SaaS, cần archive/replay → EventBridge
 
 ---
 
@@ -90,12 +107,16 @@ consumer **poll** chứ không được đẩy, và message không tự mất kh
 
 ### Vòng đời một message
 
-```
-send  ──►  [ hiển thị ]  ──ReceiveMessage──►  [ IN FLIGHT, tàng hình ]
-                ▲                                      │
-                │                                      ├─ DeleteMessage → biến mất
-                └──── hết visibility timeout ──────────┘   (consumer PHẢI gọi)
-                      (message hiện lại, consumer khác nhận được)
+```mermaid
+flowchart LR
+    S["send"]
+    V["hiển thị"]
+    F["IN FLIGHT, tàng hình"]
+    D["biến mất"]
+    S --> V
+    V -->|"ReceiveMessage"| F
+    F -->|"DeleteMessage (consumer PHẢI gọi)"| D
+    F -->|"hết visibility timeout (message hiện lại, consumer khác nhận được)"| V
 ```
 
 Điểm mấu chốt mà người mới luôn bỏ sót: **đọc message không xoá nó**. Consumer phải
@@ -201,10 +222,23 @@ SQS, Lambda, HTTP/S endpoint, email, SMS, mobile push, Firehose.
 
 **Fanout pattern.** Đây là mẫu ra thi nhiều nhất trong tuần này:
 
-```
-producer ──► SNS topic ──┬──► SQS queue A ──► consumer A
-                         ├──► SQS queue B ──► consumer B
-                         └──► SQS queue C ──► consumer C
+```mermaid
+flowchart LR
+    P["producer"]
+    T["SNS topic"]
+    QA["SQS queue A"]
+    QB["SQS queue B"]
+    QC["SQS queue C"]
+    CA["consumer A"]
+    CB["consumer B"]
+    CC["consumer C"]
+    P --> T
+    T --> QA
+    T --> QB
+    T --> QC
+    QA --> CA
+    QB --> CB
+    QC --> CC
 ```
 
 Vì sao chèn SQS vào giữa thay vì cho SNS đẩy thẳng vào Lambda? Vì SNS là **đẩy**:

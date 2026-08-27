@@ -438,12 +438,13 @@ lỗi số một khi làm lab và cũng là chi tiết đề hay hỏi ngược.
 
 Đây là mục ra thi nhiều nhất của cả SSM. Cơ chế:
 
-```
-Bạn ──HTTPS──► API Systems Manager
-                      ▲
-                      │ kết nối do AGENT chủ động mở RA (outbound 443)
-                      │
-              SSM Agent trên EC2  ← security group KHÔNG có rule inbound nào
+```mermaid
+flowchart LR
+    B["Bạn"]
+    A["API Systems Manager"]
+    G["SSM Agent trên EC2"]
+    B -->|"HTTPS"| A
+    G -->|"kết nối do AGENT chủ động mở RA (outbound 443)"| A
 ```
 
 Agent mở kết nối **đi ra**; security group là stateful nên chiều về đi kèm. Bốn hệ quả

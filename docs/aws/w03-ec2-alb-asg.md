@@ -22,36 +22,30 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    I["Internet"]
+    LB["Load Balancer (trải ≥ 2 AZ)"]
+    TG["Target Group"]
+    ASG["Auto Scaling Group"]
+    LT["Launch Template"]
+    EC["EC2 instance"]
+    EBS["EBS volume (CHỈ 1 AZ)"]
+    SNAP["Snapshot (region-wide)"]
+    I --> LB
+    LB --> TG
+    TG -->|"ASG tự đăng ký / huỷ đăng ký"| ASG
+    ASG -->|"dùng khuôn"| LT
+    ASG -->|"sinh ra"| EC
+    EC -->|"attach qua mạng"| EBS
+    EBS -->|"incremental"| SNAP
 ```
-                         Internet
-                            │
-                 ┌──────────▼──────────┐
-                 │   Load Balancer     │ ALB (L7) / NLB (L4) / GWLB (L3)
-                 │   trải ≥ 2 AZ       │ chỉ NLB có IP tĩnh, còn lại chỉ có DNS name
-                 └──────────┬──────────┘
-                 ┌──────────▼──────────┐
-                 │   Target Group      │ health check + sticky session + cross-zone
-                 └──────────┬──────────┘
-                            │ ASG tự đăng ký / huỷ đăng ký
-        ┌───────────────────▼────────────────────┐
-        │       Auto Scaling Group               │
-        │  min/desired/max · trải ≥ 2 AZ         │
-        │  health_check_type = EC2 | ELB         │
-        │  scaling policy · cooldown · warm-up   │
-        │  lifecycle hook · instance refresh     │
-        └───────┬────────────────────┬───────────┘
-      dùng khuôn│                    │sinh ra
-    ┌───────────▼────────┐   ┌───────▼────────────────────┐
-    │  Launch Template   │   │  EC2 instance              │
-    │  AMI · type · SG   │   │   └ instance store: mất khi│
-    │  IAM role · IMDS   │   │     stop/terminate         │
-    │  user data         │   └───────┬────────────────────┘
-    └────────────────────┘           │ attach qua mạng
-                             ┌───────▼────────┐  incremental  ┌───────────┐
-                             │  EBS volume    │──────────────▶│ Snapshot  │
-                             │  CHỈ 1 AZ      │               │ region-wide│
-                             └────────────────┘               └───────────┘
-```
+
+- Load Balancer: ALB (L7) / NLB (L4) / GWLB (L3) — chỉ NLB có IP tĩnh, còn lại chỉ có DNS name
+- Target Group: health check + sticky session + cross-zone
+- Auto Scaling Group: min/desired/max · trải ≥ 2 AZ · health_check_type = EC2 | ELB · scaling policy · cooldown · warm-up · lifecycle hook · instance refresh
+- Launch Template: AMI · type · SG · IAM role · IMDS · user data
+- EC2 instance: instance store mất khi stop/terminate
 
 Điểm quan trọng nhất của sơ đồ này: **EBS volume sống trong đúng một AZ**. Đó là
 lý do mọi kiến trúc HA trên AWS đều phải nhân bản ở tầng cao hơn (ASG + nhiều AZ),

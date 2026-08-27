@@ -29,35 +29,56 @@ không hỏi bạn đã bấm nút nào. Nó hỏi bạn **chọn kiến trúc n
 
 ## Bản đồ khái niệm
 
+**ON-PREMISES → KẾT NỐI → AWS**
+
+```mermaid
+flowchart LR
+    SRV["Server, VM"]
+    DB["Database"]
+    FS["File share"]
+    BIG["Dữ liệu lớn"]
+    APP["Ứng dụng cũ"]
+    EC2["EC2"]
+    RDS["RDS / Aurora"]
+    SEF["S3 / EFS / FSx"]
+    S3["S3"]
+    SGT["S3 / Glacier / FSx"]
+    SRV -->|"AWS MGN (rehost)"| EC2
+    DB -->|"DMS (+ SCT nếu đổi engine)"| RDS
+    FS -->|"DataSync (qua mạng)"| SEF
+    BIG -->|"Snowball Edge (qua bưu điện)"| S3
+    APP -->|"Storage Gateway (giữ nguyên giao thức)"| SGT
 ```
-   ON-PREMISES                          KẾT NỐI                        AWS
-   ───────────                          ───────                        ───
 
-   Server, VM ──── AWS MGN (rehost) ────────────────────────────▶  EC2
-   Database ────── DMS (+ SCT nếu đổi engine) ───────────────────▶  RDS / Aurora
-   File share ──── DataSync (qua mạng) ──────────────────────────▶  S3 / EFS / FSx
-   Dữ liệu lớn ─── Snowball Edge (qua bưu điện) ─────────────────▶  S3
-   Ứng dụng cũ ─── Storage Gateway (giữ nguyên giao thức) ───────▶  S3 / Glacier / FSx
-        │
-        │  MẠNG
-        ├── Site-to-Site VPN ──── qua internet, IPsec ────────────▶  VGW / Transit Gateway
-        └── Direct Connect ────── cáp riêng ──▶ DX Gateway ───────▶  VGW / Transit Gateway
-                                       │
-                                  public VIF ─▶ S3, DynamoDB, endpoint public của AWS
-                                  private VIF ▶ VPC
-                                  transit VIF ▶ Transit Gateway
-        │
-        └── DNS: Route 53 Resolver  outbound endpoint ──▶ DNS on-prem
-                                    inbound endpoint  ◀── query từ on-prem
+MẠNG:
 
-
-   KHÔI PHỤC THẢM HỌA — trục đánh đổi duy nhất
-   ───────────────────────────────────────────
-   Backup & Restore ──▶ Pilot Light ──▶ Warm Standby ──▶ Multi-Site Active/Active
-   RTO: giờ–ngày        chục phút        phút             ~0
-   RPO: giờ             phút             giây             ~0
-   $:   thấp nhất       thấp             trung bình       cao nhất
+```mermaid
+flowchart LR
+    ONP["ON-PREMISES"]
+    VGW["VGW / Transit Gateway"]
+    DXG["DX Gateway"]
+    PUB["S3, DynamoDB, endpoint public của AWS"]
+    VPC["VPC"]
+    TGW["Transit Gateway"]
+    R53["Route 53 Resolver"]
+    DNS["DNS on-prem"]
+    ONP -->|"Site-to-Site VPN — qua internet, IPsec"| VGW
+    ONP -->|"Direct Connect — cáp riêng"| DXG
+    DXG --> VGW
+    DXG -->|"public VIF"| PUB
+    DXG -->|"private VIF"| VPC
+    DXG -->|"transit VIF"| TGW
+    R53 -->|"outbound endpoint"| DNS
+    DNS -->|"inbound endpoint (query từ on-prem)"| R53
 ```
+
+**KHÔI PHỤC THẢM HỌA — trục đánh đổi duy nhất**
+
+| | Backup & Restore | Pilot Light | Warm Standby | Multi-Site Active/Active |
+|---|---|---|---|---|
+| RTO | giờ–ngày | chục phút | phút | ~0 |
+| RPO | giờ | phút | giây | ~0 |
+| $ | thấp nhất | thấp | trung bình | cao nhất |
 
 ---
 
@@ -116,21 +137,34 @@ Quy chiếu nhanh từ con số ra kiến trúc:
 
 ### Sơ đồ bốn cấp
 
-```
-BACKUP & RESTORE                    PILOT LIGHT
-┌───────────┐   AWS Backup          ┌───────────┐   replication
-│  CHÍNH    │──  S3 CRR  ──▶ (trống)│  CHÍNH    │──────────▶ ┌──────────────┐
-│ ĐANG CHẠY │                       │ ĐANG CHẠY │            │ DB replica ✔ │
-└───────────┘                       └───────────┘            │ AMI + IaC  ✔ │
-                                                             │ EC2/ASG: TẮT │
-                                                             └──────────────┘
+**BACKUP & RESTORE**
 
-WARM STANDBY                        MULTI-SITE ACTIVE/ACTIVE
-┌───────────┐   replication         ┌───────────┐  2 chiều  ┌───────────┐
-│  CHÍNH    │──────────▶┌─────────┐ │ REGION A  │◀─────────▶│ REGION B  │
-│ ĐANG CHẠY │           │THU NHỎ  │ │PHỤC VỤ    │           │PHỤC VỤ    │
-└───────────┘           │ĐANG CHẠY│ └─────┬─────┘           └─────┬─────┘
-                        └─────────┘       └── Route 53 latency ───┘
+```mermaid
+flowchart LR
+    A["CHÍNH — ĐANG CHẠY"] -->|"AWS Backup / S3 CRR"| B["(trống)"]
+```
+
+**PILOT LIGHT**
+
+```mermaid
+flowchart LR
+    A["CHÍNH — ĐANG CHẠY"] -->|"replication"| B["DB replica ✔ / AMI + IaC ✔ / EC2-ASG: TẮT"]
+```
+
+**WARM STANDBY**
+
+```mermaid
+flowchart LR
+    A["CHÍNH — ĐANG CHẠY"] -->|"replication"| B["THU NHỎ — ĐANG CHẠY"]
+```
+
+**MULTI-SITE ACTIVE/ACTIVE**
+
+```mermaid
+flowchart LR
+    A["REGION A — PHỤC VỤ"] <-->|"2 chiều"| B["REGION B — PHỤC VỤ"]
+    A --- R["Route 53 latency"]
+    R --- B
 ```
 
 ### Nhận diện qua từ khoá — bảng ăn điểm
@@ -343,11 +377,12 @@ Ba câu trả lời cần thuộc:
 
 ### Mẫu kiến trúc kinh điển: DX làm chính, VPN làm dự phòng
 
-```
-                    ┌──── Direct Connect (chính) ────────────┐
-   Datacenter ──────┤                                        ├──▶ VGW / Transit Gateway
-                    └──── Site-to-Site VPN (dự phòng) ───────┘
-                          qua internet, rẻ, luôn sẵn sàng
+```mermaid
+flowchart LR
+    DC["Datacenter"]
+    VGW["VGW / Transit Gateway"]
+    DC -->|"Direct Connect (chính)"| VGW
+    DC -->|"Site-to-Site VPN (dự phòng) — qua internet, rẻ, luôn sẵn sàng"| VGW
 ```
 
 DX cho hiệu năng, VPN cho tính sẵn sàng khi cáp đứt. BGP tự chuyển đường. Đây là đáp án

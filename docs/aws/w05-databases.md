@@ -21,26 +21,48 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    Q["Dữ liệu của bạn có hình dạng gì?"]
+    REL["QUAN HỆ (schema cố định, JOIN, transaction)"]
+    KV["KEY-VALUE (schema linh hoạt, truy vấn theo khoá)"]
+    SP["CHUYÊN BIỆT (hình dạng riêng)"]
+    RDS["RDS"]
+    AUR["Aurora"]
+    DDB["DynamoDB"]
+    ELC["ElastiCache Redis/Memcached"]
+    DAX["DAX (µs)"]
+    RSH["Redshift (OLAP)"]
+    NEP["Neptune (graph)"]
+    DOC["DocumentDB (MongoDB)"]
+    ATH["Athena: query thẳng trên S3"]
+    M1["Multi-AZ"]
+    M2["Read Replica"]
+    M3["RDS Proxy"]
+    M4["backup"]
+    Q --> REL
+    Q --> KV
+    Q --> SP
+    REL --> RDS
+    REL --> AUR
+    KV --> DDB
+    KV --> ELC
+    DDB --> DAX
+    SP --> RSH
+    SP --> NEP
+    SP --> DOC
+    RSH --> ATH
+    RDS --> M1
+    RDS --> M2
+    RDS --> M3
+    RDS --> M4
 ```
-                      Dữ liệu của bạn có hình dạng gì?
-                                    │
-        ┌───────────────────────────┼────────────────────────────┐
-   QUAN HỆ                    KEY-VALUE                    CHUYÊN BIỆT
-   schema cố định            schema linh hoạt              hình dạng riêng
-   JOIN, transaction         truy vấn theo khoá
-        │                           │                            │
-   ┌────┴─────┐              ┌──────┴──────┐         ┌───────────┼──────────┐
-  RDS      Aurora        DynamoDB     ElastiCache  Redshift   Neptune   DocumentDB
-   │          │              │        Redis/Memcached (OLAP)   (graph)  (MongoDB)
-   │   storage tách rời      │                         │
-   │   6 bản × 3 AZ          │      DAX (µs)           └─ Athena: query thẳng trên S3
-   │
-   ├─ Multi-AZ ──────► HA, standby KHÔNG phục vụ đọc, synchronous
-   ├─ Read Replica ──► scale ĐỌC, phục vụ đọc được, asynchronous
-   ├─ RDS Proxy ─────► gom connection pool, giữ kết nối khi failover
-   └─ backup: automated (PITR, xoá theo instance)
-              manual snapshot (sống mãi cho tới khi bạn xoá)
-```
+
+- Aurora: storage tách rời, 6 bản × 3 AZ
+- Multi-AZ → HA, standby KHÔNG phục vụ đọc, synchronous
+- Read Replica → scale ĐỌC, phục vụ đọc được, asynchronous
+- RDS Proxy → gom connection pool, giữ kết nối khi failover
+- backup: automated (PITR, xoá theo instance) · manual snapshot (sống mãi cho tới khi bạn xoá)
 
 Ba nhánh trên cùng chính là ba câu hỏi bạn phải tự hỏi khi đọc đề. Mọi thứ còn lại
 là chi tiết của từng nhánh.
@@ -156,19 +178,21 @@ PostgreSQL. Ứng dụng của bạn không biết mình đang nói chuyện v�
 
 ### Kiến trúc storage tách rời — điểm khác biệt cốt lõi
 
+```mermaid
+flowchart TD
+    W["Writer"]
+    R1["Reader 1"]
+    R2["Reader 2"]
+    CV["CLUSTER VOLUME — dùng chung"]
+    W -->|"chỉ ghi REDO LOG, không ghi cả trang dữ liệu"| CV
+    R1 --> CV
+    R2 --> CV
 ```
-   ┌──────────┐    ┌──────────┐    ┌──────────┐
-   │  Writer  │    │ Reader 1 │    │ Reader 2 │   tối đa 15 reader
-   └────┬─────┘    └────┬─────┘    └────┬─────┘
-        │  chỉ ghi REDO LOG, không ghi cả trang dữ liệu
-        └───────────────┼───────────────┘
-   ┌────────────────────▼─────────────────────────────┐
-   │        CLUSTER VOLUME — dùng chung                │
-   │   6 bản sao, trải 3 Availability Zone (2 bản/AZ)  │
-   │   ghi cần quorum 4/6 · đọc/sửa cần 3/6            │
-   │   tự lớn lên, tối đa 128 TiB (tới 256 TiB tuỳ bản)│
-   └──────────────────────────────────────────────────┘
-```
+
+- tối đa 15 reader
+- CLUSTER VOLUME: 6 bản sao, trải 3 Availability Zone (2 bản/AZ)
+- ghi cần quorum 4/6 · đọc/sửa cần 3/6
+- tự lớn lên, tối đa 128 TiB (tới 256 TiB tuỳ bản)
 
 Ba hệ quả rút ra từ sơ đồ này, và cả ba đều ra thi:
 

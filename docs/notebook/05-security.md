@@ -79,25 +79,30 @@ Con số "10 managed policy mỗi role" trong hầu hết tài liệu ôn cũ l�
 nền: **mặc định deny**; một `Allow` bật đèn xanh; một `Deny` tường minh tắt hết mọi đèn
 xanh, ở bất kỳ đâu.
 
+```mermaid
+flowchart TD
+    R["Request context (principal, action, resource, condition key)"]
+    S0["(0) Deny tường minh ở BẤT KỲ policy nào?"]
+    D["DENY. Dừng."]
+    S1["(1) SCP"]
+    S2["(2) RCP"]
+    S3["(3) Resource-based policy"]
+    S4["(4) Identity-based policy"]
+    S5["(5) Permission boundary — GIAO với (4)"]
+    S6["(6) Session policy — GIAO tiếp"]
+    R --> S0
+    S0 -->|"có"| D
+    S0 --> S1
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4
+    S4 --> S5
+    S5 --> S6
 ```
-Request context (principal, action, resource, condition key)
-  │
-  ├─(0) Deny tường minh ở BẤT KỲ policy nào? ── có ──► DENY. Dừng.
-  │
-  ├─(1) SCP  — principal thuộc member account của Organizations?
-  │        Nếu có: SCP phải Allow. Không Allow = implicit deny.
-  │        KHÔNG áp lên management account, không áp lên service-linked role.
-  │
-  ├─(2) RCP  — resource có được RCP của org cho phép bị đụng vào không?
-  │
-  ├─(3) Resource-based policy — bucket/key/queue policy, trust policy
-  │        CÙNG ACCOUNT: Allow ở đây LÀ ĐỦ, không cần identity policy.
-  │        KHÁC ACCOUNT: cần Allow ở CẢ HAI phía.
-  │
-  ├─(4) Identity-based policy
-  ├─(5) Permission boundary  — GIAO với (4)
-  └─(6) Session policy       — GIAO tiếp
-```
+
+- (1) SCP — principal thuộc member account của Organizations? Nếu có: SCP phải Allow. Không Allow = implicit deny. KHÔNG áp lên management account, không áp lên service-linked role.
+- (2) RCP — resource có được RCP của org cho phép bị đụng vào không?
+- (3) Resource-based policy — bucket/key/queue policy, trust policy. CÙNG ACCOUNT: Allow ở đây LÀ ĐỦ, không cần identity policy. KHÁC ACCOUNT: cần Allow ở CẢ HAI phía.
 
 **Vì sao Deny đi trước tất cả.** Nếu Deny phải xếp hàng theo thứ tự, muốn chặn một hành
 động bạn phải đi kiểm toán và xoá mọi Allow đang tồn tại. Cho Deny quyền phủ quyết tuyệt

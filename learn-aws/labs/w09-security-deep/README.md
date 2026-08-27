@@ -105,24 +105,27 @@ Biến môi trường của Lambda hiện **nguyên văn** trong console và tro
 
 ## Sơ đồ thứ tự đánh giá quyền — phải vẽ được từ trí nhớ
 
-```
-Request tới
-    │
-    ▼
-1. Có EXPLICIT DENY ở bất kỳ đâu?  ──YES──→  TỪ CHỐI. Dừng. Không gì cứu được.
-    │ NO
-    ▼
-2. SCP của Organizations cho phép? ──NO───→  TỪ CHỐI
-    │ YES
-    ▼
-3. Permission boundary cho phép?   ──NO───→  TỪ CHỐI
-    │ YES
-    ▼
-4. Có ALLOW ở identity policy
-   HOẶC resource policy?           ──YES──→  CHO PHÉP
-    │ NO
-    ▼
-   TỪ CHỐI  (implicit deny — mặc định của IAM là từ chối)
+```mermaid
+flowchart TD
+    R["Request tới"]
+    S1["1. Có EXPLICIT DENY ở bất kỳ đâu?"]
+    S2["2. SCP của Organizations cho phép?"]
+    S3["3. Permission boundary cho phép?"]
+    S4["4. Có ALLOW ở identity policy HOẶC resource policy?"]
+    D0["TỪ CHỐI. Dừng. Không gì cứu được."]
+    D1["TỪ CHỐI"]
+    D2["TỪ CHỐI"]
+    OK["CHO PHÉP"]
+    DF["TỪ CHỐI (implicit deny — mặc định của IAM là từ chối)"]
+    R --> S1
+    S1 -->|"YES"| D0
+    S1 -->|"NO"| S2
+    S2 -->|"NO"| D1
+    S2 -->|"YES"| S3
+    S3 -->|"NO"| D2
+    S3 -->|"YES"| S4
+    S4 -->|"YES"| OK
+    S4 -->|"NO"| DF
 ```
 
 Ba giá trị Policy Simulator trả về khớp đúng sơ đồ này:

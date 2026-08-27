@@ -59,16 +59,19 @@ Queue phân tán, message được nhân bản trên nhiều server trong region
 
 ### Vòng đời một message — và vì sao visibility timeout hoạt động như vậy
 
+```mermaid
+flowchart TD
+    S["SendMessage"]
+    V["message nằm trong queue, VISIBLE"]
+    I["INVISIBLE trong visibility timeout giây"]
+    D["biến mất"]
+    S --> V
+    V -->|"ReceiveMessage"| I
+    I -->|"DeleteMessage"| D
+    I -->|"hết timeout mà chưa Delete"| V
 ```
-SendMessage ──► [message nằm trong queue, VISIBLE]
-                     │  ReceiveMessage
-                     ▼
-                [INVISIBLE trong <visibility timeout> giây]   ← message VẪN CÒN trong queue
-                     │                                │
-       DeleteMessage │                                │ hết timeout mà chưa Delete
-                     ▼                                ▼
-                  biến mất                    quay lại VISIBLE, ReceiveCount++
-```
+
+message VẪN CÒN trong queue khi INVISIBLE; khi quay lại VISIBLE thì ReceiveCount++.
 
 Điểm mấu chốt: **`ReceiveMessage` không xoá message**, nó chỉ *ẩn* message đi. Xoá là
 một lời gọi riêng (`DeleteMessage`) mà consumer phát ra **sau khi xử lý xong**. Đây chính

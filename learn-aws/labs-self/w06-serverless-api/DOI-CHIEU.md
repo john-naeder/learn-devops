@@ -19,16 +19,13 @@
 
 ### Hai hướng quyền — vẽ được hai mũi tên này là xong nửa Domain 1
 
-```
-        ┌──────────────┐   (2) resource policy trên HÀM       ┌──────────┐
-        │ API Gateway  │ ────────────────────────────────────▶│  Lambda  │
-        └──────────────┘   "dịch vụ apigateway được gọi tôi"  └────┬─────┘
-                                                                   │
-                       (1) execution role + identity policy        │
-                           "tôi được PutItem/GetItem bảng X"        ▼
-                                                             ┌──────────┐
-                                                             │ DynamoDB │
-                                                             └──────────┘
+```mermaid
+flowchart LR
+    AG["API Gateway"]
+    L["Lambda"]
+    D["DynamoDB"]
+    AG -->|"(2) resource policy trên HÀM: dịch vụ apigateway được gọi tôi"| L
+    L -->|"(1) execution role + identity policy: tôi được PutItem/GetItem bảng X"| D
 ```
 
 | | Hướng (1) — execution role | Hướng (2) — resource policy |

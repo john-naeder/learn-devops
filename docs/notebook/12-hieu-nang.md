@@ -36,13 +36,28 @@ trúc có thể sẵn sàng cao mà chậm, hoặc nhanh mà mong manh.
 Câu hỏi hiệu năng luôn có một tầng đang nghẽn, và đáp án đúng nhắm vào đúng tầng đó.
 Chọn nhầm tầng thì giải pháp đúng về mặt kỹ thuật vẫn là đáp án sai.
 
+```mermaid
+flowchart LR
+    U["Người dùng"]
+    D["DNS"]
+    C["CDN"]
+    L["LB"]
+    K["Compute"]
+    H["Cache"]
+    B["Database"]
+    S["Storage"]
+    U --> D
+    D --> C
+    C --> L
+    L --> K
+    K --> H
+    H --> B
+    B --> S
 ```
-Người dùng ──► DNS ──► CDN ──► LB ──► Compute ──► Cache ──► Database ──► Storage
-              │       │       │       │           │          │            │
-   nghẽn ở:  hiếm   cache   ít gặp   CPU/RAM    cache      query      IOPS/
-                    miss             cạn kiệt   miss       chậm,      throughput
-                                                           lock       cạn
-```
+
+| Tầng | DNS | CDN | LB | Compute | Cache | Database | Storage |
+|---|---|---|---|---|---|---|---|
+| nghẽn ở | hiếm | cache miss | ít gặp | CPU/RAM cạn kiệt | cache miss | query chậm, lock | IOPS/throughput cạn |
 
 Bốn dấu hiệu trong đề và tầng tương ứng:
 
@@ -212,26 +227,29 @@ Chi tiết đầy đủ ở [`03-database.md`](03-database.md).
 Đây là dạng câu hỏi ra thi nhiều nhất của Domain 3. Cache có ở mọi tầng, và mỗi tầng
 giải một loại vấn đề khác nhau.
 
+```mermaid
+flowchart TD
+    U["Người dùng"]
+    B["Trình duyệt"]
+    C["CloudFront"]
+    A["API Gateway cache"]
+    T["Application tier"]
+    D["DynamoDB"]
+    DB["Database"]
+    U --> B
+    U --> C
+    U --> A
+    U --> T
+    U --> D
+    U --> DB
 ```
-Người dùng
-   │
-   ├─ Trình duyệt         Cache-Control header  ← rẻ nhất, nhanh nhất, bạn không trả gì
-   │
-   ├─ CloudFront          Cache nội dung tĩnh và cả động (theo TTL, header, cookie)
-   │                      Giải: latency địa lý + tải lên origin + phí egress
-   │
-   ├─ API Gateway cache   Cache response của một stage (0,5 GB – 237 GB)
-   │                      Giải: gọi backend lặp lại cho cùng một query string
-   │
-   ├─ Application tier    ElastiCache (Redis/Memcached)
-   │                      Giải: query database lặp lại, session, kết quả tính toán
-   │
-   ├─ DynamoDB            DAX — cache trong suốt, micro giây
-   │                      Giải: đọc lặp lại trên DynamoDB
-   │
-   └─ Database            Materialized view / bảng tổng hợp sẵn
-                          Giải: query aggregate nặng chạy đi chạy lại
-```
+
+- Trình duyệt — Cache-Control header ← rẻ nhất, nhanh nhất, bạn không trả gì
+- CloudFront — Cache nội dung tĩnh và cả động (theo TTL, header, cookie). Giải: latency địa lý + tải lên origin + phí egress
+- API Gateway cache — Cache response của một stage (0,5 GB – 237 GB). Giải: gọi backend lặp lại cho cùng một query string
+- Application tier — ElastiCache (Redis/Memcached). Giải: query database lặp lại, session, kết quả tính toán
+- DynamoDB — DAX, cache trong suốt, micro giây. Giải: đọc lặp lại trên DynamoDB
+- Database — Materialized view / bảng tổng hợp sẵn. Giải: query aggregate nặng chạy đi chạy lại
 
 ### Chọn tầng theo dấu hiệu trong đề
 
@@ -640,26 +658,40 @@ dịch chuyển cả phân phối). Đáp án là tìm và xóa nguyên nhân g�
 
 **Chọn EBS volume:**
 
-```
-Cần gì?
-├── Latency dưới 1 ms
-│   ├── Dữ liệu phải bền vững ──────────► io2 Block Express
-│   └── Dữ liệu tạm, tái tạo được ─────► Instance store (NVMe)
-├── Trên 16.000 IOPS hoặc trên 1.000 MB/s ──► io2 Block Express
-├── Throughput cao, IOPS thấp, tuần tự ────► st1 (hoặc sc1 nếu rất thưa)
-└── Còn lại (mặc định) ────────────────────► gp3
+```mermaid
+flowchart TD
+    Q["Cần gì?"]
+    L["Latency dưới 1 ms"]
+    L1["io2 Block Express"]
+    L2["Instance store (NVMe)"]
+    A2["io2 Block Express"]
+    A3["st1 (hoặc sc1 nếu rất thưa)"]
+    A4["gp3"]
+    Q --> L
+    L -->|"Dữ liệu phải bền vững"| L1
+    L -->|"Dữ liệu tạm, tái tạo được"| L2
+    Q -->|"Trên 16.000 IOPS hoặc trên 1.000 MB/s"| A2
+    Q -->|"Throughput cao, IOPS thấp, tuần tự"| A3
+    Q -->|"Còn lại (mặc định)"| A4
 ```
 
 **Thêm cache ở đâu:**
 
-```
-Cái gì lặp lại?
-├── Nội dung tĩnh cho người dùng ở xa ─────► CloudFront
-├── Response API cho cùng query string ────► API Gateway cache (hoặc CloudFront)
-├── Query database lặp lại ────────────────► ElastiCache (Redis nếu cần HA/cấu trúc dữ liệu)
-├── Đọc DynamoDB lặp lại, cần micro giây ──► DAX (chỉ eventually consistent)
-├── Session dùng chung giữa instance ──────► ElastiCache Redis
-└── Aggregate query nặng chạy lặp lại ─────► Materialized view / bảng tổng hợp
+```mermaid
+flowchart TD
+    Q["Cái gì lặp lại?"]
+    A1["CloudFront"]
+    A2["API Gateway cache (hoặc CloudFront)"]
+    A3["ElastiCache (Redis nếu cần HA/cấu trúc dữ liệu)"]
+    A4["DAX (chỉ eventually consistent)"]
+    A5["ElastiCache Redis"]
+    A6["Materialized view / bảng tổng hợp"]
+    Q -->|"Nội dung tĩnh cho người dùng ở xa"| A1
+    Q -->|"Response API cho cùng query string"| A2
+    Q -->|"Query database lặp lại"| A3
+    Q -->|"Đọc DynamoDB lặp lại, cần micro giây"| A4
+    Q -->|"Session dùng chung giữa instance"| A5
+    Q -->|"Aggregate query nặng chạy lặp lại"| A6
 ```
 
 ---

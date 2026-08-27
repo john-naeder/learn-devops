@@ -28,33 +28,42 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    QT["QUẢN TRỊ (ai được phép tồn tại): Organizations → OU → SCP, Control Tower"]
+    DT["DANH TÍNH: IAM user/role/policy · permission boundary · STS AssumeRole"]
+    SM["Secrets Manager / Parameter Store"]
+    KMS["KMS (CMK, data key)"]
+    HSM["CloudHSM (single-tenant HSM)"]
+    DL["DỮ LIỆU: S3 · EBS · RDS · DynamoDB · EFS · SQS · SNS · Lambda env var"]
+    QT -->|"giới hạn trần"| DT
+    DT -->|"ai gọi được API nào"| KMS
+    SM --> KMS
+    KMS --> HSM
+    KMS -->|"envelope encryption"| DL
 ```
-                    ┌──────────────── QUẢN TRỊ (ai được phép tồn tại) ─────────────┐
-                    │  Organizations → OU → SCP        Control Tower               │
-                    └───────────────────────────┬─────────────────────────────────┘
-                                                │ giới hạn trần
-                    ┌───────────────────────────▼─────────────────────────────────┐
-   DANH TÍNH        │  IAM user/role/policy · permission boundary · STS AssumeRole │
-                    └───────────────────────────┬─────────────────────────────────┘
-                                                │ ai gọi được API nào
-   ────────────────────────────────────────────┼──────────────────────────────────
-                                                │
-   BÍ MẬT & KHOÁ    ┌────────────────┐   ┌──────▼───────┐   ┌──────────────────┐
-                    │ Secrets Manager│   │     KMS      │   │    CloudHSM      │
-                    │ Parameter Store│──▶│ CMK, data key│──▶│ single-tenant HSM│
-                    └────────────────┘   └──────┬───────┘   └──────────────────┘
-                                                │ envelope encryption
-   DỮ LIỆU          S3 · EBS · RDS · DynamoDB · EFS · SQS · SNS · Lambda env var
-                                                │
-   ────────────────────────────────────────────┼──────────────────────────────────
-                                                │
-   MẠNG (xếp lớp)   Route 53 ─▶ Shield ─▶ CloudFront+WAF ─▶ ALB+WAF ─▶ SG ─▶ NACL
-                                          Network Firewall / GWLB ở giữa VPC
-   ────────────────────────────────────────────┼──────────────────────────────────
-                                                │
-   PHÁT HIỆN        GuardDuty (mối đe doạ) · Inspector (lỗ hổng) · Macie (dữ liệu nhạy cảm)
-   ĐIỀU TRA         Detective (nguyên nhân gốc)
-   BẰNG CHỨNG       CloudTrail (ai làm gì) · Config (cấu hình ra sao) · Security Hub (gom lại)
+
+```mermaid
+flowchart LR
+    R["Route 53"]
+    S["Shield"]
+    C["CloudFront+WAF"]
+    A["ALB+WAF"]
+    SG["SG"]
+    N["NACL"]
+    R --> S
+    S --> C
+    C --> A
+    A --> SG
+    SG --> N
+```
+
+MẠNG (xếp lớp) — Network Firewall / GWLB ở giữa VPC.
+
+```
+PHÁT HIỆN        GuardDuty (mối đe doạ) · Inspector (lỗ hổng) · Macie (dữ liệu nhạy cảm)
+ĐIỀU TRA         Detective (nguyên nhân gốc)
+BẰNG CHỨNG       CloudTrail (ai làm gì) · Config (cấu hình ra sao) · Security Hub (gom lại)
 ```
 
 Đọc bản đồ này theo chiều dọc: mỗi tầng giả định tầng trên đã đúng. Đó chính là
@@ -295,12 +304,17 @@ Elastic Beanstalk. Không dùng trực tiếp cho EC2.
 
 Bốn khái niệm, đúng theo thứ tự lồng nhau:
 
-```
-Web ACL  ──gắn vào──▶ CloudFront | ALB | API Gateway (REST) | AppSync | Cognito user pool
-   │
-   ├── Rule (do bạn viết)          : IP set, geo match, chuỗi/regex, kích thước, SQLi, XSS
-   ├── Rule group (tái sử dụng)    : của bạn, AWS Managed Rules, hoặc Marketplace
-   └── Rate-based rule             : đếm request theo khoá gộp trong một cửa sổ thời gian
+```mermaid
+flowchart TD
+    W["Web ACL"]
+    T["CloudFront / ALB / API Gateway (REST) / AppSync / Cognito user pool"]
+    R1["Rule (do bạn viết): IP set, geo match, chuỗi/regex, kích thước, SQLi, XSS"]
+    R2["Rule group (tái sử dụng): của bạn, AWS Managed Rules, hoặc Marketplace"]
+    R3["Rate-based rule: đếm request theo khoá gộp trong một cửa sổ thời gian"]
+    W -->|"gắn vào"| T
+    W --> R1
+    W --> R2
+    W --> R3
 ```
 
 - **Action** của mỗi rule: `Allow`, `Block`, `Count`, `CAPTCHA`, `Challenge`.
@@ -348,25 +362,32 @@ Nhận diện: *"lọc theo tên miền", "chặn traffic ra tới domain không
 
 ### Xếp lớp — thứ tự một request đi qua
 
+```mermaid
+flowchart TD
+    C["Client"]
+    R53["Route 53"]
+    CF["CloudFront"]
+    ALB["ALB"]
+    SG["Security Group"]
+    NACL["Network ACL"]
+    NFW["Network Firewall"]
+    APP["EC2 / ECS / Lambda"]
+    C --> R53
+    C --> CF
+    C --> ALB
+    C --> SG
+    C --> NACL
+    C --> NFW
+    C --> APP
 ```
-Client
-  │
-  ├─ Route 53          DNS, health check           (Shield Standard bảo vệ sẵn)
-  │
-  ├─ CloudFront        edge, TLS terminate         + WAF (scope CLOUDFRONT, cert us-east-1)
-  │                                                 + Shield Advanced (tuỳ chọn)
-  ├─ ALB               tầng 7, target group        + WAF (scope REGIONAL)
-  │
-  ├─ Security Group    stateful, chỉ ALLOW         ← gắn vào ENI
-  │
-  ├─ Network ACL       stateless, có DENY          ← gắn vào subnet
-  │
-  ├─ Network Firewall  stateful, IPS, lọc domain   ← nằm trên route table
-  │
-  └─ EC2 / ECS / Lambda
-        └─ IAM role của instance quyết định nó gọi được API nào
-        └─ KMS quyết định nó đọc được dữ liệu nào
-```
+
+- Route 53 — DNS, health check (Shield Standard bảo vệ sẵn)
+- CloudFront — edge, TLS terminate + WAF (scope CLOUDFRONT, cert us-east-1) + Shield Advanced (tuỳ chọn)
+- ALB — tầng 7, target group + WAF (scope REGIONAL)
+- Security Group — stateful, chỉ ALLOW ← gắn vào ENI
+- Network ACL — stateless, có DENY ← gắn vào subnet
+- Network Firewall — stateful, IPS, lọc domain ← nằm trên route table
+- EC2 / ECS / Lambda — IAM role của instance quyết định nó gọi được API nào; KMS quyết định nó đọc được dữ liệu nào
 
 **Nguyên tắc defense in depth** rút ra từ hình trên: không lớp nào được giả định là
 hoàn hảo. Câu hỏi SAA gần như không bao giờ có đáp án "chỉ cần một biện pháp". Khi
@@ -489,26 +510,31 @@ Ba luật của SCP, thuộc lòng:
 
 Chuỗi đánh giá đầy đủ — vẽ lại được từ trí nhớ là ăn nhiều điểm Domain 1:
 
-```
-Request tới
-   │
-   ▼
-1. Có EXPLICIT DENY ở BẤT KỲ policy nào?  ──CÓ──▶ TỪ CHỐI. Hết. Không gì cứu được.
-   │ không
-   ▼
-2. SCP của Organizations có cho phép?      ──KHÔNG──▶ TỪ CHỐI
-   │ có
-   ▼
-3. Permission boundary có cho phép?        ──KHÔNG──▶ TỪ CHỐI
-   │ có (hoặc không gắn boundary)
-   ▼
-4. Session policy có cho phép?             ──KHÔNG──▶ TỪ CHỐI
-   │ có (hoặc không có session policy)
-   ▼
-5. Identity policy HOẶC resource policy có ALLOW?  ──CÓ──▶ CHO PHÉP
-   │ không
-   ▼
-   TỪ CHỐI  (implicit deny — mặc định của IAM luôn là từ chối)
+```mermaid
+flowchart TD
+    REQ["Request tới"]
+    S1["1. Có EXPLICIT DENY ở BẤT KỲ policy nào?"]
+    S2["2. SCP của Organizations có cho phép?"]
+    S3["3. Permission boundary có cho phép?"]
+    S4["4. Session policy có cho phép?"]
+    S5["5. Identity policy HOẶC resource policy có ALLOW?"]
+    D0["TỪ CHỐI. Hết. Không gì cứu được."]
+    D1["TỪ CHỐI"]
+    D2["TỪ CHỐI"]
+    D3["TỪ CHỐI"]
+    OK["CHO PHÉP"]
+    DF["TỪ CHỐI (implicit deny — mặc định của IAM luôn là từ chối)"]
+    REQ --> S1
+    S1 -->|"CÓ"| D0
+    S1 -->|"không"| S2
+    S2 -->|"KHÔNG"| D1
+    S2 -->|"có"| S3
+    S3 -->|"KHÔNG"| D2
+    S3 -->|"có (hoặc không gắn boundary)"| S4
+    S4 -->|"KHÔNG"| D3
+    S4 -->|"có (hoặc không có session policy)"| S5
+    S5 -->|"CÓ"| OK
+    S5 -->|"không"| DF
 ```
 
 Đọc theo lối bạn đã quen: bước 1–4 là các bộ lọc **giao nhau** (AND, thu hẹp dần),

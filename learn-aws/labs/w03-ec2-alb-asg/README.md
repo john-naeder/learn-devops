@@ -38,22 +38,23 @@ watch -n 5 ../verify.sh           # ngồi xem ASG tự chữa lành, 3-5 phút
 
 ## Kiến trúc
 
+```mermaid
+flowchart TD
+    I["Internet"]
+    A["ALB (public subnet, 2 AZ)"]
+    T["Target Group /health, interval 10s, threshold 2"]
+    G["Auto Scaling Group min 1 / desired 2 / max 3, trải 2 AZ"]
+    E["2 x t3.micro"]
+    I --> A
+    A --> T
+    T --> G
+    G --> E
 ```
-Internet
-   │
-   ▼
-ALB (public subnet, 2 AZ)         $0,0225/giờ
-   │  SG: nhận :80 từ 0.0.0.0/0
-   ▼
-Target Group  /health, interval 10s, threshold 2   → phát hiện hỏng sau ~20s
-   │
-   ▼
-Auto Scaling Group  min 1 / desired 2 / max 3, trải 2 AZ
-   │  health_check_type = ELB          ← điểm mấu chốt
-   │  SG: chỉ nhận :80 TỪ SG CỦA ALB   ← không phải từ internet
-   ▼
-2 x t3.micro   gp3 8GB, IMDSv2 bắt buộc, delete_on_termination = true
-```
+
+- ALB: $0,0225/giờ · SG: nhận :80 từ 0.0.0.0/0
+- Target Group: phát hiện hỏng sau ~20s
+- Auto Scaling Group: health_check_type = ELB ← điểm mấu chốt · SG: chỉ nhận :80 TỪ SG CỦA ALB ← không phải từ internet
+- 2 x t3.micro: gp3 8GB, IMDSv2 bắt buộc, delete_on_termination = true
 
 ---
 

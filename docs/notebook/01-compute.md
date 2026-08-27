@@ -447,12 +447,18 @@ hẳn"* → mixed instances với `OnDemandBaseCapacity` > 0 + Capacity Rebalanc
 
 ### Vòng đời execution environment — gốc của mọi hành vi lạ
 
-```
-INIT   (chạy code ngoài handler)  ─┐
-INVOKE (chạy handler)              │ môi trường được TÁI SỬ DỤNG
-INVOKE (chạy handler)              │
-   ... không có request → FREEZE ──┘
-SHUTDOWN (sau vài phút nhàn rỗi)
+```mermaid
+flowchart TD
+    I["INIT (chạy code ngoài handler)"]
+    V1["INVOKE (chạy handler)"]
+    V2["INVOKE (chạy handler)"]
+    F["FREEZE (không có request)"]
+    S["SHUTDOWN (sau vài phút nhàn rỗi)"]
+    I --> V1
+    V1 --> V2
+    V2 --> F
+    F -->|"môi trường được TÁI SỬ DỤNG"| V1
+    F --> S
 ```
 
 Hai hệ quả bị hỏi thẳng trong đề. **Biến toàn cục sống qua các invocation** — đó là

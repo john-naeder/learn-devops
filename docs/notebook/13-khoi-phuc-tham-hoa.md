@@ -596,18 +596,19 @@ Ba điều về băng thông VPN mà đề có hỏi:
 
 Đây là câu trả lời "đúng nhất" cho gần như mọi câu hỏi hybrid có nhắc tới độ tin cậy:
 
+```mermaid
+flowchart TD
+    R["on-premises router"]
+    DX["Direct Connect (đường chính)"]
+    VPN["Site-to-Site VPN (qua internet) (đường dự phòng)"]
+    G["Virtual Private Gateway hoặc Transit Gateway"]
+    R --> DX
+    R --> VPN
+    DX --> G
+    VPN --> G
 ```
-        on-premises router
-          │            │
-   Direct Connect    Site-to-Site VPN (qua internet)
-   (đường chính)      (đường dự phòng)
-          │            │
-          └─────┬──────┘
-                │  BGP quảng bá cùng prefix
-                │  DX được ưu tiên nhờ AS_PATH ngắn hơn / local preference cao hơn
-                ▼
-        Virtual Private Gateway hoặc Transit Gateway
-```
+
+BGP quảng bá cùng prefix; DX được ưu tiên nhờ AS_PATH ngắn hơn / local preference cao hơn.
 
 Vì sao nó đúng: DX cho băng thông và độ trễ ổn định nhưng **một kết nối DX là một điểm
 hỏng** (một cáp, một router, một location). VPN chạy qua internet nên nó **hỏng theo cách
@@ -627,11 +628,19 @@ Vấn đề: một **private VIF** chỉ gắn được vào **một** Virtual P
 VPC trong **một** Region. Có 5 VPC ở 3 Region thì cần 5 VIF — không mở rộng được. Direct
 Connect Gateway là một đối tượng **global** đứng giữa:
 
-```
-   on-prem ──DX──▶ private VIF ──▶ ┌──────────────────────┐ ──▶ VGW (VPC ở us-east-1)
-                                   │ Direct Connect       │ ──▶ VGW (VPC ở eu-west-1)
-                                   │ Gateway (global)     │ ──▶ TGW (nhiều VPC ở ap-southeast-1)
-                                   └──────────────────────┘
+```mermaid
+flowchart LR
+    O["on-prem"]
+    V["private VIF"]
+    D["Direct Connect Gateway (global)"]
+    A["VGW (VPC ở us-east-1)"]
+    B["VGW (VPC ở eu-west-1)"]
+    C["TGW (nhiều VPC ở ap-southeast-1)"]
+    O -->|"DX"| V
+    V --> D
+    D --> A
+    D --> B
+    D --> C
 ```
 
 Ba điều phải nhớ:
@@ -739,47 +748,92 @@ phải router giữa các VPC.
 
 **Chọn chiến lược DR** — đọc RTO trước, chi phí sau:
 
-```
-Đề có nhắc mất cả Region / DR / RTO / RPO không?
-├── Không → đây là bài HA, sang 11-san-sang-cao.md
-└── Có
-    ├── RTO ≈ 0, "no downtime", "serve from nearest Region" ─► Multi-Site Active/Active
-    ├── RTO phút, "scaled-down version running" ────────────► Warm Standby
-    ├── RTO chục phút, "không trả tiền cho compute nhàn rỗi" ► Pilot Light
-    └── RTO giờ–ngày, "lowest cost", "nightly backup is fine" ► Backup & Restore
+```mermaid
+flowchart TD
+    Q["Đề có nhắc mất cả Region / DR / RTO / RPO không?"]
+    N["đây là bài HA, sang 11-san-sang-cao.md"]
+    Y["Có"]
+    A1["Multi-Site Active/Active"]
+    A2["Warm Standby"]
+    A3["Pilot Light"]
+    A4["Backup & Restore"]
+    Q -->|"Không"| N
+    Q --> Y
+    Y -->|"RTO ≈ 0, no downtime, serve from nearest Region"| A1
+    Y -->|"RTO phút, scaled-down version running"| A2
+    Y -->|"RTO chục phút, không trả tiền cho compute nhàn rỗi"| A3
+    Y -->|"RTO giờ–ngày, lowest cost, nightly backup is fine"| A4
 ```
 
 **Chọn cơ chế dữ liệu cho Region phụ:**
 
-```
-Aurora ──────────► Aurora Global Database (RPO <1s, RTO <1 phút)
-RDS thường ──────► RPO giây–phút: cross-Region read replica
-                   RPO 5–30 phút: cross-Region automated backup replication (rẻ hơn)
-DynamoDB ────────► Ghi ở 2 nơi: Global Tables (MREC, hoặc MRSC nếu không chịu được LWW)
-                   Chỉ cần DR:  PITR + AWS Backup copy cross-Region
-S3 ──────────────► CRR (+ RTC nếu có cam kết 15 phút)
-EBS ─────────────► Snapshot + copy cross-Region (nhớ KMS key ở đích)
-Server on-prem ──► AWS Elastic Disaster Recovery (DRS)
+```mermaid
+flowchart LR
+    AU["Aurora"]
+    AU1["Aurora Global Database (RPO dưới 1s, RTO dưới 1 phút)"]
+    RD["RDS thường"]
+    RD1["RPO giây–phút: cross-Region read replica"]
+    RD2["RPO 5–30 phút: cross-Region automated backup replication (rẻ hơn)"]
+    DY["DynamoDB"]
+    DY1["Ghi ở 2 nơi: Global Tables (MREC, hoặc MRSC nếu không chịu được LWW)"]
+    DY2["Chỉ cần DR: PITR + AWS Backup copy cross-Region"]
+    S3["S3"]
+    S31["CRR (+ RTC nếu có cam kết 15 phút)"]
+    EB["EBS"]
+    EB1["Snapshot + copy cross-Region (nhớ KMS key ở đích)"]
+    SV["Server on-prem"]
+    SV1["AWS Elastic Disaster Recovery (DRS)"]
+    AU --> AU1
+    RD --> RD1
+    RD --> RD2
+    DY --> DY1
+    DY --> DY2
+    S3 --> S31
+    EB --> EB1
+    SV --> SV1
 ```
 
 **Chọn công cụ chuyển dữ liệu** — tính `ngày ≈ TB × 132 ÷ Mbps` trước, rồi:
 
-```
-< ~7 ngày   ─► File (NFS/SMB): DataSync · Database đang chạy: DMS (+SCT nếu đổi engine)
-               Cả server: MGN
-> ~14 ngày, "remote location", "no reliable connectivity" ─► Snowball Edge
-"on-prem vẫn phải truy cập sau khi xong" ─► Storage Gateway (File/Volume/Tape)
+```mermaid
+flowchart LR
+    A["dưới ~7 ngày"]
+    A1["File (NFS/SMB): DataSync"]
+    A2["Database đang chạy: DMS (+SCT nếu đổi engine)"]
+    A3["Cả server: MGN"]
+    B["trên ~14 ngày, remote location, no reliable connectivity"]
+    B1["Snowball Edge"]
+    C["on-prem vẫn phải truy cập sau khi xong"]
+    C1["Storage Gateway (File/Volume/Tape)"]
+    A --> A1
+    A --> A2
+    A --> A3
+    B --> B1
+    C --> C1
 ```
 
 **Chọn kết nối hybrid:**
 
-```
-Nhanh, rẻ, tạm thời, mã hoá sẵn ─────────► Site-to-Site VPN
-Độ trễ ổn định, băng thông lớn, lâu dài ─► Direct Connect
-Tin cậy cao với chi phí hợp lý ──────────► DX chính + VPN dự phòng qua BGP
-Nhiều VPC ở nhiều Region qua một DX ─────► Direct Connect Gateway
-Nhiều VPC trong một Region + on-prem ────► Transit VIF → DX Gateway → TGW
-Cần >1,25 Gbps qua VPN ──────────────────► TGW + BGP + ECMP nhiều tunnel
+```mermaid
+flowchart LR
+    Q1["Nhanh, rẻ, tạm thời, mã hoá sẵn"]
+    A1["Site-to-Site VPN"]
+    Q2["Độ trễ ổn định, băng thông lớn, lâu dài"]
+    A2["Direct Connect"]
+    Q3["Tin cậy cao với chi phí hợp lý"]
+    A3["DX chính + VPN dự phòng qua BGP"]
+    Q4["Nhiều VPC ở nhiều Region qua một DX"]
+    A4["Direct Connect Gateway"]
+    Q5["Nhiều VPC trong một Region + on-prem"]
+    A5["Transit VIF → DX Gateway → TGW"]
+    Q6["Cần trên 1,25 Gbps qua VPN"]
+    A6["TGW + BGP + ECMP nhiều tunnel"]
+    Q1 --> A1
+    Q2 --> A2
+    Q3 --> A3
+    Q4 --> A4
+    Q5 --> A5
+    Q6 --> A6
 ```
 
 ---

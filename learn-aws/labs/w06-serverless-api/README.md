@@ -31,15 +31,20 @@ cd terraform && terraform output -raw thu_nhanh
 
 ## Kiến trúc
 
+```mermaid
+flowchart TD
+    I["Internet"]
+    A["HTTP API Gateway ($default stage, auto_deploy, throttle 20 rps)"]
+    L["Lambda python3.12, 256 MB, timeout 10s, X-Ray bật"]
+    D["DynamoDB"]
+    I --> A
+    A --> L
+    L --> D
 ```
-Internet → HTTP API Gateway ($default stage, auto_deploy, throttle 20 rps)
-              │  CORS xử lý ở đây, không phải trong code
-              ▼
-           Lambda python3.12, 256 MB, timeout 10s, X-Ray bật
-              │  IAM: đúng 5 action trên đúng 1 bảng
-              ▼
-           DynamoDB PK=NGUOIDUNG#<ten>  SK=GHICHU#<id>  TTL 30 ngày
-```
+
+- API Gateway: CORS xử lý ở đây, không phải trong code
+- Lambda: IAM đúng 5 action trên đúng 1 bảng
+- DynamoDB: `PK=NGUOIDUNG#<ten>`, `SK=GHICHU#<id>`, TTL 30 ngày
 
 API đầy đủ CRUD: `GET/POST /ghichu`, `GET/PUT/DELETE /ghichu/{id}`, `GET /health`.
 

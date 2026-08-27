@@ -23,31 +23,54 @@
 
 ## Bản đồ khái niệm
 
+```mermaid
+flowchart TD
+    P["AWS Partition (aws / aws-cn / aws-us-gov)"]
+    R1["Region us-east-1 (cô lập hoàn toàn)"]
+    R2["Region eu-west-1 (cô lập hoàn toàn)"]
+    R3["Region ap-southeast-1 ..."]
+    AZ1["AZ use1-az1"]
+    AZ2["AZ use1-az2"]
+    AZ3["AZ use1-az4"]
+    LZ["Local Zone us-east-1-bos-1"]
+    EDGE["Edge location / PoP — CloudFront, Route 53, Global Accelerator"]
+    P --> R1
+    P --> R2
+    P --> R3
+    R1 --> AZ1
+    R1 --> AZ2
+    R1 --> AZ3
+    R1 --> LZ
+    R1 -.->|"tách rời hẳn"| EDGE
 ```
-                        AWS Partition (aws | aws-cn | aws-us-gov)
-                                     │
-        ┌────────────────────────────┼────────────────────────────┐
-        │                            │                            │
-   Region us-east-1             Region eu-west-1            Region ap-southeast-1
-   (cô lập hoàn toàn)           (cô lập hoàn toàn)          ...
-        │
-        ├── AZ use1-az1 ──┐
-        ├── AZ use1-az2 ──┼── nối nhau bằng metro fiber riêng, độ trễ rất thấp
-        ├── AZ use1-az4 ──┘   nhưng NGUỒN ĐIỆN / LÀM MÁT / MẠNG ĐỘC LẬP
-        │
-        ├── Local Zone us-east-1-bos-1     ← phần mở rộng của Region, đặt gần người dùng
-        │
-        └── (tách rời hẳn) Edge location / PoP — CloudFront, Route 53, Global Accelerator
-                                                 750+ điểm, KHÔNG chạy EC2 của bạn
 
+- 3 AZ nối nhau bằng metro fiber riêng, độ trễ rất thấp nhưng NGUỒN ĐIỆN / LÀM MÁT / MẠNG ĐỘC LẬP
+- Local Zone: phần mở rộng của Region, đặt gần người dùng
+- Edge location / PoP: 750+ điểm, KHÔNG chạy EC2 của bạn
 
-   Mọi thao tác dưới đây đổ về CÙNG MỘT tập API:
+Mọi thao tác dưới đây đổ về CÙNG MỘT tập API:
 
-   Console ──┐
-   AWS CLI ──┤
-   SDK     ──┼──► AWS API endpoint ──► IAM (được phép không?) ──► Control plane ──► tài nguyên
-   Terraform ┤                             │
-   CloudFormation                          └──► CloudTrail ghi lại TOÀN BỘ
+```mermaid
+flowchart LR
+    C["Console"]
+    CLI["AWS CLI"]
+    SDK["SDK"]
+    TF["Terraform"]
+    CFN["CloudFormation"]
+    API["AWS API endpoint"]
+    IAM["IAM (được phép không?)"]
+    CP["Control plane"]
+    RES["tài nguyên"]
+    CT["CloudTrail ghi lại TOÀN BỘ"]
+    C --> API
+    CLI --> API
+    SDK --> API
+    TF --> API
+    CFN --> API
+    API --> IAM
+    IAM --> CP
+    CP --> RES
+    API --> CT
 ```
 
 Ba lớp cần tách bạch trong đầu ngay từ đầu:
@@ -292,19 +315,30 @@ Một **AWS account** không phải "user". Nó là **ranh giới cô lập mạ
 
 **AWS Organizations** gom nhiều account thành một tổ chức:
 
+```mermaid
+flowchart TD
+    ROOT["Root"]
+    MGMT["Management account"]
+    OUS["OU Security"]
+    OUP["OU Production"]
+    OUX["OU Sandbox"]
+    A1["account log-archive"]
+    A2["account audit"]
+    A3["account prod-app"]
+    A4["account prod-data"]
+    A5["account dev-nhan-vien"]
+    ROOT --> MGMT
+    ROOT --> OUS
+    ROOT --> OUP
+    ROOT --> OUX
+    OUS --> A1
+    OUS --> A2
+    OUP --> A3
+    OUP --> A4
+    OUX --> A5
 ```
-Root
- ├── Management account          ← tạo organization, trả tiền cho tất cả
- │                                 SCP KHÔNG áp dụng cho account này
- ├── OU "Security"
- │    ├── account log-archive
- │    └── account audit
- ├── OU "Production"
- │    ├── account prod-app
- │    └── account prod-data
- └── OU "Sandbox"
-      └── account dev-nhan-vien
-```
+
+Management account: tạo organization, trả tiền cho tất cả — SCP KHÔNG áp dụng cho account này.
 
 Bốn thứ Organizations mang lại, ở mức SAA cần biết:
 
