@@ -1,0 +1,5 @@
+# aws-saa-c03 là tài liệu của vntechies, tham chiếu chứ không sao chép.
+# Repo gốc không có licence, nên phân phối lại nội dung là không được phép.
+[submodule "aws-saa-c03"]
+	path = aws-saa-c03
+	url = https://github.com/vntechies/aws-saa-c03.git
